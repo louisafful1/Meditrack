@@ -37,17 +37,18 @@ const getUserProfile = async () => {
   return response.data;
 };
 
+// Get Users 
+const getUsers = async () => {
+  const response = await axios.get(API_URL);
+  return response.data;
+};
+
 // Update User
 const updateUser = async (userData) => {
   const response = await axios.put(API_URL + "profile", userData);
   return response.data;
 };
 
-// Ppdate Photo
-const updatePhoto = async (userData) => {
-  const response = await axios.patch(API_URL + "updatePhoto", userData);
-  return response.data;
-};
 
 // Forgot Password
 const forgotPassword = async (email) => {
@@ -61,21 +62,35 @@ const resetPassword = async ({ password, resetToken }) => {
   const response = await axios.put(`${API_URL}resetPassword/${resetToken}`, { password });
   return response.data;
 };
+//toggle status
+const toggleStatus = async (userId) => {
+  const response = await axios.patch(`${API_URL}${userId}/toggle-status`);
+  return response.data;
+};
+// delete User
+const deleteUser = async(userId) => {
+    const response = await axios.delete(`${API_URL}${userId}`);
+    return response.data;
+
+}
+
 
 
 
 
 
 const authService = {
-    register,
+  register,
     login,
     logout,
     getLoginStatus,
     getUserProfile,
+    getUsers,
     updateUser,
-    updatePhoto,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    toggleStatus,
+    deleteUser
 }
 
 export default authService

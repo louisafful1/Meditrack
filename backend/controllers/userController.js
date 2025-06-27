@@ -1,22 +1,21 @@
-User
 import asyncHandler from "express-async-handler";
 import User from '../models/userModels.js'
 import generateToken from '../utils/generateToken.js'
 import jwt from 'jsonwebtoken' 
 import crypto from "crypto"
 import { sendEmail } from "../utils/sendEmail.js";
-
+import ActivityLog from "../models/activityLogModel.js"
 
 //@desc  Register a new user
-//route  POST/api/users/create-user
+//route  POST/api/users/register
 //@access public
-// Admin creates a user without password
+// Admin registers a user without password
 
-const adminCreateUser = asyncHandler(async (req, res) => {
-    const {name, email, role, facility} = req.body; 
+const adminRegisterUser = asyncHandler(async (req, res) => {
+    const {name, email, phone, role, facility} = req.body; 
 
     //Validation
-    if (!name || !email || !role || !facility ) {
+    if (!name || !email || !phone || !role || !facility ) {
         res.status(400);
         throw new Error('Please fill in all required fields');
 
@@ -30,10 +29,11 @@ const adminCreateUser = asyncHandler(async (req, res) => {
         throw new Error('User already exists');
     }
 
-    //create the user 
+    //Register the user 
     const user = await User.create({
         name,
         email,
+        phone,
         role, 
         facility     
 
@@ -85,16 +85,16 @@ const adminCreateUser = asyncHandler(async (req, res) => {
       message,
     });
 
-    await logActivity({
+    await ActivityLog({
       userId: req.user._id,
-      action: "Created User",
+      action: "Registered User",
       module: "User",
       targetId: user._id,
       message: `${req.user.name} Created a new account for ${user.name} (${user.role})`,
     });
     
 
-    res.status(201).json({ message: "User created. Link has been sent to the email." });
+    res.status(201).json({ message: "User registered. Link has been sent to the email." });
 
 });
 
@@ -157,6 +157,22 @@ const getUserProfile = asyncHandler(async (req, res) => {
 
 });
 
+//@desc  Get user profile
+//route  GET/api/users/auth
+//@access private
+
+const getUsers = asyncHandler(async (req, res) => {
+  const user = await User.find().sort({ createdAt: -1 }).select("-password");
+       
+if (user) {
+  res.status(200).json(user);
+} else {   
+      res.status(404);
+      throw new Error('Users not Found');    
+}
+
+});
+
 
 // Get login status
 const getLoginStatus = asyncHandler(async (req, res) => {
@@ -188,20 +204,17 @@ const updateUser = asyncHandler(async (req, res) => {
    if (user) {
     user.name = req.body.name || user.name;
     user.email = req.body.email || user.email;
+    user.phone = req.body.phone || user.phone;
     user.role = req.body.role || user.role;
     user.facility = req.body.facility || user.facility;
 
-
-    if (req.body.password) {
-        user.password = req.body.password;
-
-    }
     const updateUser = await user.save();
     
     res.status(200).json({
         _id: updateUser._id,
         name: updateUser.name,
         email: updateUser.email,
+        phone: updateUser.phone,
         role: updateUser.role,
         facility: updateUser.facility
 
@@ -282,15 +295,58 @@ if(!user){
 
 })
 
+// @desc    Toggle user active status
+// @route   PATCH /api/users/:id/toggle-status
+// @access  Admin only
+const toggleUserStatus = asyncHandler(async (req, res) => {
+  const userId = req.params.userId;
+  const user = await User.findById(userId);
+  if (!user) {
+    res.status(404);
+    throw new Error("User not found");
+  }
+
+  // Toggle the active status
+  user.active = !user.active;
+  await user.save();
+
+  res.status(200).json({
+message: `${user.name} is now ${user.active ? "Active" : "Inactive"}.`,
+            _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        active: user.active,
+  
+  });
+});
+
+const deleteUser = asyncHandler(async(req, res) => {
+
+   const user = await User.findById(req.params.id)
+   
+   if(!user){
+      res.status(404)
+      throw new Error("user not found")
+     }
+    
+// delete user from mongodb
+   await User.findByIdAndDelete(req.params.id)
+res.status(200).json({_id: req.params.id, message: "User deleted successfully"})
+   })
 
 
 export {
   authUser,
-  adminCreateUser,
+  adminRegisterUser,
   logoutUser,
   getUserProfile,
+  getUsers,
   updateUser,
   getLoginStatus,
   sendPasswordSetupLink,
   resetPassword,
+  toggleUserStatus,
+  deleteUser
 };

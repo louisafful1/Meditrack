@@ -9,7 +9,7 @@ import { generateFacilitySnapshots } from "../controllers/aiControllers/snapshot
 
 const setupDailySnapshotCrons = () => {
   // 1. Inventory Snapshot – 11:58 PM
-  cron.schedule("58 23 * * *", async () => {
+  cron.schedule("38 22 * * *", async () => {
     console.log("Running daily inventory snapshot...");
 
     try {
@@ -19,7 +19,7 @@ const setupDailySnapshotCrons = () => {
         drug: item._id,
         drugName: item.drugName,
         batchNumber: item.batchNumber,
-        stockLevel: item.currentStock,
+        currentStock: item.currentStock,
         facility: item.facility,
         expiryDate: item.expiryDate,
         location: item.location,
@@ -34,7 +34,7 @@ const setupDailySnapshotCrons = () => {
   });
 
   // 2. Dispense Snapshot – 11:59 PM
-  cron.schedule("59 23 * * *", async () => {
+  cron.schedule("37 22 * * *", async () => {
     console.log(" Running daily dispense snapshot...");
 
     try {
@@ -60,7 +60,7 @@ const setupDailySnapshotCrons = () => {
   });
 
   // 3. Facility Behavior Snapshot – 12:00 AM
-  cron.schedule("0 0 * * *", async () => {
+  cron.schedule("39 22 * * *", async () => {
     console.log("Running daily facility behavior snapshot...");
 
     try {
@@ -97,7 +97,7 @@ const setupDailySnapshotCrons = () => {
   });
 
   // 4. Optional: Central snapshot generation using your existing controller – 12:05 AM
-  cron.schedule("5 0 * * *", async () => {
+  cron.schedule("36 22 * * *", async () => {
     console.log(" Running generateFacilitySnapshots()...");
 
     try {
