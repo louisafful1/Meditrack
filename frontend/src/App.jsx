@@ -13,6 +13,7 @@ import axios from "axios";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css"
 import ReportPage from "./pages/ReportsPage";
+import PrivateRoute from "../utils/PrivateRoute";
 
 function App() {
   axios.defaults.withCredentials =true;
@@ -26,6 +27,7 @@ function App() {
         <Route path="/set-password/:resetToken" element={<SetPasswordPage />} />
 
         {/* Protected Routes */}
+<Route element={<PrivateRoute />}>
         <Route
           path="/*"
           element={
@@ -51,6 +53,7 @@ function App() {
             </div>
           }
         />
+</Route>
       </Routes>
     </div>
     </>
