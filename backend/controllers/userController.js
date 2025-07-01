@@ -165,8 +165,10 @@ const getUserProfile = asyncHandler(async (req, res) => {
 
 const getUsers = asyncHandler(async (req, res) => {
   const facilityId = req.user.facility;
+    const userId = req.user._id;
 
-  const users = await User.find({ facility: facilityId })
+
+  const users = await User.find({ facility: facilityId, _id:{ $ne: userId} })
     .sort({ createdAt: -1 })
     .select("-password");
 
