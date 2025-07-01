@@ -1,28 +1,53 @@
 import { useState } from "react";
 import { Lock } from "lucide-react";
 import { motion } from "framer-motion";
-
+import { resetPassword } from "../redux/auth/authSlice";
+import Loader from "../components/loader/loader";
+import { useSelector, useDispatch } from "react-redux";
+import { useNavigate, useParams } from "react-router-dom";
+import { toast } from "react-toastify";
+const initialState = {
+    password: "",
+    confirmPassword: ""
+}
 const SetPasswordPage = () => {
-  const [form, setForm] = useState({ password: "", confirmPassword: "" });
-  const [error, setError] = useState("");
-
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (form.password !== form.confirmPassword) {
+    const [error, setError] = useState("");
+    const [formData, setFormData ] = useState(initialState);
+    const { password, confirmPassword } = formData;
+    const { isLoading } = useSelector((state) => state.auth);
+    const dispatch = useDispatch();
+    const navigate = useNavigate()
+    const { resetToken } = useParams(); // Retrieve the reset token from URL params
+  
+      const handleResetPassword = async (e) => {
+          e.preventDefault();  
+          if (!password || !confirmPassword) {
+          setError("All fields are required");   
+              return;
+        }
+      if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
+          // Dispatch reset password action with password and token
+          try {
+              await dispatch(resetPassword({ password, resetToken }));
+              navigate("/login")
+          } catch (error) {
+              toast.error(error.message || "Failed to reset password");
+          }
+      };
 
-    setError("");
-    alert("Password set successfully!");
-    // TODO: send new password + token to backend
-  };
+    const handleInputChange = (e) => {
+        const { name, value } = e.target
+        setFormData({ ...formData, [name]: value })
+    
+    };  
+
 
   return (
+    <>
+    {isLoading && <Loader />}
     <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
       <motion.div
         className="bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-md border border-gray-700"
@@ -31,14 +56,14 @@ const SetPasswordPage = () => {
       >
         <h2 className="text-2xl font-bold text-white mb-6 text-center">Set New Password</h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleResetPassword} className="space-y-4">
           <div className="relative">
             <Lock className="absolute left-3 top-3 text-gray-400" size={18} />
             <input
               type="password"
               name="password"
-              value={form.password}
-              onChange={handleChange}
+              value={password}
+              onChange={handleInputChange}
               placeholder="New Password"
               required
               className="w-full pl-10 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
@@ -50,8 +75,8 @@ const SetPasswordPage = () => {
             <input
               type="password"
               name="confirmPassword"
-              value={form.confirmPassword}
-              onChange={handleChange}
+              value={confirmPassword}
+              onChange={handleInputChange}
               placeholder="Confirm Password"
               required
               className="w-full pl-10 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white"
@@ -69,6 +94,7 @@ const SetPasswordPage = () => {
         </form>
       </motion.div>
     </div>
+    </>
   );
 };
 

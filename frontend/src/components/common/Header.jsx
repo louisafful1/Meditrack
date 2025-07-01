@@ -1,24 +1,30 @@
-import { useState } from "react";
+import { useSelector, useDispatch } from "react-redux";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { UserCircle, LogOut } from "lucide-react";
 import NotificationsPopup from "./NotificationsPopup";
-import { logout, RESET_AUTH } from "../../redux/auth/authSlice";
-import { useDispatch } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { logout, RESET_AUTH, getUserProfile } from "../../redux/auth/authSlice";
 
-
-
-const Header = ({ title, user = { name: "Admin", facility: "Holy Family Hospital" }, onLogout }) => {
+const Header = ({ title }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-
   const [showDropdown, setShowDropdown] = useState(false);
 
+  const { user } = useSelector((state) => state.auth);
+
+  useEffect(() => {
+    if (!user) {
+      dispatch(getUserProfile());  // Ensure user data is fetched
+    }
+  }, [dispatch, user]);
+
   const toggleDropdown = () => setShowDropdown((prev) => !prev);
+
   const logoutUser = async () => {
     await dispatch(logout());
     await dispatch(RESET_AUTH());
-    navigate('/login')
-  }
+    navigate('/login');
+  };
 
   return (
     <header className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg border-b border-gray-700 z-10">
@@ -26,26 +32,24 @@ const Header = ({ title, user = { name: "Admin", facility: "Holy Family Hospital
         <h1 className="text-2xl font-semibold text-gray-100">{title}</h1>
 
         <div className="flex items-center gap-4 relative">
-          {/* Facility Badge */}
+          {/* ✅ Facility Badge */}
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-800 font-mono uppercase tracking-wider whitespace-nowrap">
-            {user.facility}
+            {user?.facility?.name || "Loading..."}
           </span>
 
-          {/* Notifications */}
           <NotificationsPopup />
 
-          {/* Profile */}
+          {/* ✅ User Profile */}
           <div className="relative">
             <button
               onClick={toggleDropdown}
               className="flex items-center space-x-2 focus:outline-none"
             >
               <UserCircle size={32} className="text-indigo-400" />
-              <span className="text-sm font-medium text-gray-200 hidden sm:inline">{user.name}</span>
+              <span className="text-sm font-medium text-gray-200 hidden sm:inline">
+                {user?.name || "User"}
+              </span>
             </button>
-            <div className="flex items-center gap-4">
-  {/* other controls */}
-</div>
 
             {/* Dropdown */}
             {showDropdown && (

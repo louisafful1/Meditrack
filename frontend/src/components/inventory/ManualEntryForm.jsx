@@ -1,43 +1,70 @@
 import { useState } from "react";
 import { Package, CalendarCheck, Boxes, User, Clipboard, AlertTriangle } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import { createDrug } from "../../redux/drug/drugSlice";
 
-const ManualEntryForm = ({ onSubmit, onCancel }) => {
-  const [formData, setFormData] = useState({
-    drugName: "",
-    batchNumber: "",
-    currentStock: "",
-    supplier: "",
-    expiryDate: "",
-    receivedDate: new Date().toISOString().split("T")[0]
-  });
+const initialState = {
+	      drugName:"",
+        batchNumber:"",
+        currentStock:"",
+        supplier:"",
+        expiryDate:"",
+        receivedDate:"",
+      
+  }
+const ManualEntryForm = ({ onCancel }) => {
+  
+      const [formData, setFormData] = useState(initialState);
+      const {drugName,
+          batchNumber,
+          currentStock,
+          supplier,
+          expiryDate,
+          receivedDate,
+          } = formData
+      
+      const dispatch = useDispatch()
+      const navigate = useNavigate()
+    
+      const {isLoading, isSuccess} = useSelector((state) =>state.drug)
+    
+      const handleInputChange = (e) => {
+      const {name, value} = e.target
+      setFormData({ ...formData, [name]: value})
+       }
+  
+    
+      const handleSubmit = async(e) => {
+        e.preventDefault()
+    //  Validations
 
-  const [errors, setErrors] = useState({});
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
+    if (!drugName || !batchNumber || !currentStock || !supplier || !expiryDate || !receivedDate) {
+      return toast.error("All fields are required")
+      
+     }
+         if (parseInt(currentStock) < 1) {
+                return toast.error("Stock must be at least 1")
+         }     
+       
+         // Send form data including base64 image
+       const drugData = {
+          drugName,
+          batchNumber,
+          currentStock,
+          supplier,
+          expiryDate,
+          receivedDate,
+          
+          }
+      
+        await dispatch(createDrug(drugData));   
+    
+      };
+  
 
-  const validate = () => {
-    const newErrors = {};
-    if (!formData.drugName) newErrors.drugName = "Drug name is required";
-    if (!formData.batchNumber) newErrors.batchNumber = "Batch number is required";
-    if (!formData.currentStock || parseInt(formData.currentStock) < 1) newErrors.currentStock = "Stock must be at least 1";
-    if (!formData.supplier) newErrors.supplier = "Supplier is required";
-    if (!formData.expiryDate) newErrors.expiryDate = "Expiry date is required";
-    return newErrors;
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    const validation = validate();
-    if (Object.keys(validation).length > 0) {
-      setErrors(validation);
-      return;
-    }
-    setErrors({});
-    onSubmit(formData);
-  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 p-6">
@@ -51,13 +78,15 @@ const ManualEntryForm = ({ onSubmit, onCancel }) => {
         <label className="text-sm block mb-1">Drug Name</label>
         <input
           type="text"
+          id="drugName"
           name="drugName"
-          value={formData.drugName}
-          onChange={handleChange}
+          value={drugName}
+          onChange={handleInputChange}
+          required
           className="w-full bg-gray-700 text-white border border-gray-600 rounded-md px-3 py-2"
           placeholder="e.g., Amoxicillin 500mg"
         />
-        {errors.drugName && <p className="text-red-400 text-sm mt-1 flex items-center"><AlertTriangle size={14} className="mr-1" /> {errors.drugName}</p>}
+
       </div>
 
       {/* Batch Number */}
@@ -66,12 +95,14 @@ const ManualEntryForm = ({ onSubmit, onCancel }) => {
         <input
           type="text"
           name="batchNumber"
-          value={formData.batchNumber}
-          onChange={handleChange}
+          id="batchNumber"
+          value={batchNumber}
+          required
+          onChange={handleInputChange}
           className="w-full bg-gray-700 text-white border border-gray-600 rounded-md px-3 py-2"
           placeholder="e.g., AMX-2024-001"
         />
-        {errors.batchNumber && <p className="text-red-400 text-sm mt-1 flex items-center"><AlertTriangle size={14} className="mr-1" /> {errors.batchNumber}</p>}
+
       </div>
 
       {/* Current Stock */}
@@ -80,13 +111,13 @@ const ManualEntryForm = ({ onSubmit, onCancel }) => {
         <input
           type="number"
           name="currentStock"
-          value={formData.currentStock}
-          onChange={handleChange}
+          id="currentStock"
+          value={currentStock}
+          onChange={handleInputChange}
           min="1"
           className="w-full bg-gray-700 text-white border border-gray-600 rounded-md px-3 py-2"
           placeholder="e.g., 100"
         />
-        {errors.currentStock && <p className="text-red-400 text-sm mt-1 flex items-center"><AlertTriangle size={14} className="mr-1" /> {errors.currentStock}</p>}
       </div>
 
       {/* Supplier */}
@@ -95,12 +126,12 @@ const ManualEntryForm = ({ onSubmit, onCancel }) => {
         <input
           type="text"
           name="supplier"
-          value={formData.supplier}
-          onChange={handleChange}
+          id="supplier"
+          value={supplier}
+          onChange={handleInputChange}
           className="w-full bg-gray-700 text-white border border-gray-600 rounded-md px-3 py-2"
           placeholder="e.g., National Medical Stores"
         />
-        {errors.supplier && <p className="text-red-400 text-sm mt-1 flex items-center"><AlertTriangle size={14} className="mr-1" /> {errors.supplier}</p>}
       </div>
 
       {/* Expiry Date */}
@@ -109,11 +140,11 @@ const ManualEntryForm = ({ onSubmit, onCancel }) => {
         <input
           type="date"
           name="expiryDate"
-          value={formData.expiryDate}
-          onChange={handleChange}
+          id="expiryDate"
+          value={expiryDate}
+          onChange={handleInputChange}
           className="w-full bg-gray-700 text-white border border-gray-600 rounded-md px-3 py-2"
         />
-        {errors.expiryDate && <p className="text-red-400 text-sm mt-1 flex items-center"><AlertTriangle size={14} className="mr-1" /> {errors.expiryDate}</p>}
       </div>
 
       {/* Received Date */}
@@ -122,8 +153,9 @@ const ManualEntryForm = ({ onSubmit, onCancel }) => {
         <input
           type="date"
           name="receivedDate"
-          value={formData.receivedDate}
-          onChange={handleChange}
+          id="receivedDate"
+          value={receivedDate}
+          onChange={handleInputChange}
           className="w-full bg-gray-700 text-white border border-gray-600 rounded-md px-3 py-2"
         />
       </div>

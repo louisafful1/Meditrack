@@ -13,12 +13,12 @@ import { authUser, adminRegisterUser,
 
 } from '../controllers/userController.js';
 const userRoutes = express.Router();
-userRoutes.post('/register', adminRegisterUser);
+userRoutes.post('/register',protect, adminRegisterUser);
 userRoutes.post('/login', authUser);
 userRoutes.post('/logout', logoutUser);
 userRoutes.get('/getLoginStatus', getLoginStatus);
 userRoutes.route('/profile').get(protect, getUserProfile).put(protect, updateUser); 
-userRoutes.get("/", getUsers);
+userRoutes.get("/", protect, getUsers);
 userRoutes.put("/resetPassword/:resetToken", resetPassword)
 userRoutes.post("/send-setup-link", sendPasswordSetupLink);
 userRoutes.patch("/:userId/toggle-status", toggleUserStatus);

@@ -1,141 +1,41 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Package,
-  AlertCircle,
-  Boxes,
-  ArrowUpDown,
-  Search,
-  Edit,
-  Trash2,
-  Download,
-  X
+  Package, AlertCircle, Boxes, ArrowUpDown, Search,
+  Edit, Trash2, Download, X
 } from "lucide-react";
-
 import Header from "../components/common/Header";
 import ManualEntryForm from "../components/inventory/ManualEntryForm";
 import QRScannerSection from "../components/inventory/QRScannerSection";
-import StatCard from "../components/common/StatCard";
-const InventoryPage = () => {
-  const [mockInventory, setMockInventory] = useState([
-    {
-      id: 1,
-      drugName: "Amoxicillin 500mg",
-      batchNumber: "AMX-2024-001",
-      currentStock: 120,
-      Supplier: "National Medical Stores",
-      expiryDate: "2025-12-31",
-      receivedDate: "2024-11-15",
-      status: "Adequate",
-    },
-    {
-      id: 2,
-      drugName: "Paracetamol 500mg",
-      batchNumber: "PAR-2024-002",
-      currentStock: 85,
-      Supplier: "Quality Chemicals",
-      expiryDate: "2025-10-15",
-      receivedDate: "2024-11-15",
-      status: "Adequate",
-    },
-    {
-      id: 3,
-      drugName: "Insulin Vials",
-      batchNumber: "INS-2024-003",
-      currentStock: 15,
-      Supplier: "MediPharm",
-      expiryDate: "2024-09-30",
-      receivedDate: "2024-11-15",
-      status: "Low Stock",
-    },
-    {
-      id: 4,
-      drugName: "Ibuprofen 200mg",
-      batchNumber: "IBU-2024-004",
-      currentStock: 45,
-      Supplier: "MediPharm",
-      expiryDate: "2025-08-20",
-      receivedDate: "2024-11-15",
-      status: "Adequate",
-    },
-    {
-      id: 5,
-      drugName: "Metformin 500mg",
-      batchNumber: "MET-2024-005",
-      currentStock: 8,
-      Supplier: "Quality Chemicals",
-      expiryDate: "2024-11-15",
-      receivedDate: "2024-11-15",
-      status: "Critical",
-    },
-  ]);
+import { useDispatch, useSelector } from "react-redux";
+import { deleteDrug, getAllDrugs } from "../redux/drug/drugSlice";
 
-  const [inventory, setInventory] = useState([
-    {
-      id: 1,
-      drugName: "Amoxicillin 500mg",
-      batchNumber: "AMX-2024-001",
-      currentStock: 120,
-      Supplier: "National Medical Stores",
-      expiryDate: "2025-12-31",
-      receivedDate: "2024-11-15",
-      status: "Adequate",
-    },
-    {
-      id: 2,
-      drugName: "Paracetamol 500mg",
-      batchNumber: "PAR-2024-002",
-      currentStock: 85,
-      Supplier: "Quality Chemicals",
-      expiryDate: "2025-10-15",
-      receivedDate: "2024-11-15",
-      status: "Adequate",
-    },
-    {
-      id: 3,
-      drugName: "Insulin Vials",
-      batchNumber: "INS-2024-003",
-      currentStock: 15,
-      Supplier: "MediPharm",
-      expiryDate: "2024-09-30",
-      receivedDate: "2024-11-15",
-      status: "Low Stock",
-    },
-    {
-      id: 4,
-      drugName: "Ibuprofen 200mg",
-      batchNumber: "IBU-2024-004",
-      currentStock: 45,
-      Supplier: "MediPharm",
-      expiryDate: "2025-08-20",
-      receivedDate: "2024-11-15",
-      status: "Adequate",
-    },
-    {
-      id: 5,
-      drugName: "Metformin 500mg",
-      batchNumber: "MET-2024-005",
-      currentStock: 8,
-      Supplier: "Quality Chemicals",
-      expiryDate: "2024-11-15",
-      receivedDate: "2024-11-15",
-      status: "Critical",
-    },
-  ]);
+const InventoryPage = () => {
+  const dispatch = useDispatch();
+const { drugs = [] } = useSelector((state) => state.drug || {});
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState("all");
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [page, setPage] = useState(1);
-  const rowsPerPage = 3;
   const [entryMode, setEntryMode] = useState("qr");
   const [showEditModal, setShowEditModal] = useState(false);
-const [selectedDrug, setSelectedDrug] = useState(null);
+  const [selectedDrug, setSelectedDrug] = useState(null);
 
-const handleEditClick = (drug) => {
-  setSelectedDrug(drug);
-  setShowEditModal(true);
-};
+  const rowsPerPage = 10;
+
+  useEffect(() => {
+    dispatch(getAllDrugs());
+  }, [dispatch]);
+
+  const handleDeleteDrug = (drugId) => {
+    dispatch(deleteDrug(drugId));
+  };
+
+  const handleEditClick = (drug) => {
+    setSelectedDrug(drug);
+    setShowEditModal(true);
+  };
 
   const handleSort = (key) => {
     let direction = "asc";
@@ -145,7 +45,7 @@ const handleEditClick = (drug) => {
     setSortConfig({ key, direction });
   };
 
-  const filtered = inventory.filter((item) => {
+  const filtered = drugs.filter((item) => {
     const matchesSearch = item.drugName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter =
       filter === "all" ||
@@ -168,8 +68,9 @@ const handleEditClick = (drug) => {
   const totalPages = Math.ceil(sorted.length / rowsPerPage);
 
   const handleExportCSV = () => {
-    const headers = Object.keys(inventory[0]).join(",");
-    const rows = sorted.map(obj => Object.values(obj).join(",")).join("\n");
+    if (!drugs.length) return;
+    const headers = Object.keys(drugs[0]).join(",");
+    const rows = drugs.map((obj) => Object.values(obj).join(",")).join("\n");
     const csv = [headers, rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -179,15 +80,14 @@ const handleEditClick = (drug) => {
     a.click();
     URL.revokeObjectURL(url);
   };
-  
 
   return (
     <div className="flex flex-col flex-1 overflow-y-auto text-gray-300 z-9">
       <Header title="Inventory" />
 
       <main className="p-6 space-y-6 z-9">
-                {/* QR or Manual Entry */}
-                <AnimatePresence mode="wait">
+        {/* QR or Manual Entry */}
+        <AnimatePresence mode="wait">
           {entryMode === "qr" ? (
             <motion.div
               key="qr"
@@ -208,12 +108,10 @@ const handleEditClick = (drug) => {
               transition={{ duration: 0.3 }}
               className="bg-gray-800 p-6 rounded-xl shadow-md border border-gray-700"
             >
-              <ManualEntryForm onSubmit={() => {}} onCancel={() => setEntryMode("qr")} />
+              <ManualEntryForm onCancel={() => setEntryMode("qr")} />
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Stats */}
 
         {/* Search & Filter */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -266,13 +164,27 @@ const handleEditClick = (drug) => {
             </thead>
             <tbody className="divide-y divide-gray-700">
               {paginated.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-800">
+                <tr key={item._id} className="hover:bg-gray-800">
                   <td className="px-4 py-3">{item.drugName}</td>
                   <td className="px-4 py-3">{item.batchNumber}</td>
                   <td className="px-4 py-3">{item.currentStock}</td>
-                  <td className="px-4 py-3">{item.Supplier}</td>
-                  <td className="px-4 py-3">{item.expiryDate}</td>
-                  <td className="px-4 py-3">{item.receivedDate}</td>
+                  <td className="px-4 py-3">{item.supplier}</td>
+                    <td className="px-4 py-3">
+  {new Date(item.receivedDate).toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric"
+  })}
+</td>
+                    <td className="px-4 py-3">
+  {new Date(item.expiryDate).toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric"
+  })}
+</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 text-xs rounded-full font-medium ${
                       item.status === "Critical"
@@ -283,11 +195,12 @@ const handleEditClick = (drug) => {
                     }`}>{item.status}</span>
                   </td>
                   <td className="px-4 py-3 flex gap-2">
-                  <button onClick={() => handleEditClick(item)} className="text-indigo-400 hover:text-indigo-300">
-  <Edit size={16} />
-</button>
-
-                    <button className="text-red-400 hover:text-red-300"><Trash2 size={16} /></button>
+                    <button onClick={() => handleEditClick(item)} className="text-indigo-400 hover:text-indigo-300">
+                      <Edit size={16} />
+                    </button>
+                    <button onClick={() => handleDeleteDrug(item._id)} className="text-red-400 hover:text-red-300">
+                      <Trash2 size={16} />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -302,89 +215,13 @@ const handleEditClick = (drug) => {
               key={i}
               onClick={() => setPage(i + 1)}
               className={`px-3 py-1 rounded-md border ${
-                page === i + 1
-                  ? "bg-indigo-600 text-white"
-                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                page === i + 1 ? "bg-indigo-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
               }`}
             >
               {i + 1}
             </button>
           ))}
         </div>
-        {/* Edit Modal */}
-<AnimatePresence>
-  {showEditModal && selectedDrug && (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4"
-      onClick={() => setShowEditModal(false)}
-    >
-      <motion.div
-        initial={{ scale: 0.95 }}
-        animate={{ scale: 1 }}
-        exit={{ scale: 0.95 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-gray-900 w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col rounded-xl shadow-lg border border-gray-700"
-      >
-        <div className="p-6 overflow-y-auto flex-1 space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-bold text-white">Edit Drug Info</h2>
-            <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-white">
-              <X size={20} />
-            </button>
-          </div>
-
-          {[ 
-            { label: 'Drug Name', key: 'drugName' },
-            { label: 'Batch Number', key: 'batchNumber' },
-            { label: 'Current Stock', key: 'currentStock' },
-            { label: 'Supplier', key: 'Supplier' },
-            { label: 'Expiry Date', key: 'expiryDate' },
-            { label: 'Received Date', key: 'receivedDate' },
-            { label: 'Status', key: 'status' }
-          ].map(({ label, key }) => (
-            <div key={key}>
-              <label className="text-sm text-gray-400">{label}</label>
-              <input
-                type={key.includes("Date") ? "date" : "text"}
-                value={selectedDrug[key]}
-                onChange={(e) =>
-                  setSelectedDrug({ ...selectedDrug, [key]: e.target.value })
-                }
-                className="w-full px-3 py-2 mt-1 bg-gray-800 text-white border border-gray-700 rounded-md"
-              />
-            </div>
-          ))}
-        </div>
-
-        <div className="px-6 py-4 border-t border-gray-700 flex justify-end gap-2 bg-gray-900">
-          <button
-            onClick={() => setShowEditModal(false)}
-            className="px-4 py-2 border border-gray-600 rounded-md text-gray-300 hover:bg-gray-800"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              setInventory((prev) =>
-                prev.map((item) =>
-                  item.id === selectedDrug.id ? selectedDrug : item
-                )
-              );
-              setShowEditModal(false);
-            }}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-          >
-            Save Changes
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  )}
-</AnimatePresence>
-
       </main>
     </div>
   );

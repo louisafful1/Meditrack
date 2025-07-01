@@ -19,13 +19,12 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
     location,
   } = req.body;
 
-  if (!drugName || !batchNumber || !currentStock || !supplier || !expiryDate || !receivedDate || !location) {
+  if (!drugName || !batchNumber || !currentStock || !expiryDate || !receivedDate) {
     res.status(400);
     throw new Error('Please fill in all required fields');
   }
 
   const facilityId = req.user.facility;
-
   const item = await Inventory.create({
     drugName,
     batchNumber,
@@ -33,8 +32,8 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
     supplier,
     expiryDate,
     receivedDate,
-    status,
     location,
+    status: status || "Adequate",
     facility: facilityId,
     createdBy: req.user._id,
   });
@@ -79,7 +78,7 @@ export const scanAndSaveInventory = asyncHandler(async (req, res) => {
       supplier,
       expiryDate,
       receivedDate,
-      status,
+     status: status || "Adequate",
       location,
       createdBy: req.user._id,
       facility: req.user.facility
@@ -92,7 +91,7 @@ export const scanAndSaveInventory = asyncHandler(async (req, res) => {
     userId: req.user._id,
     action: "Create Inventory",
     module: "inventory",
-    targetId: item._id,
+    targetId: savedItem._id,
     message: `${drugName} added to inventory by ${req.user.name}`,
   });
     res.status(201).json(savedItem);
@@ -106,7 +105,9 @@ export const scanAndSaveInventory = asyncHandler(async (req, res) => {
 export const getInventoryByFacility = asyncHandler(async (req, res) => {
   const facilityId = req.user.facility;
 
-  const inventory = await Inventory.find({ facility: facilityId }).sort({ createdAt: -1 });
+  const inventory = await Inventory.find({ facility: facilityId })
+  .populate("facility", "name")
+  .sort({ createdAt: -1 });
 
   res.status(200).json(inventory);
 });
@@ -164,7 +165,8 @@ export const deleteInventoryItem = asyncHandler(async (req, res) => {
     throw new Error('Item not found or not accessible');
   }
 
-  await item.remove();
+ await Inventory.findByIdAndDelete(item._id);
+
   // await redisClient.del(`inventory:${req.user.facility}`);
   await logActivity({
     userId: req.user._id,

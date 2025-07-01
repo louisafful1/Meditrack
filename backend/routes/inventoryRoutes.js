@@ -14,14 +14,14 @@ const InventoryRoutes = express.Router();
 
 InventoryRoutes.route('/')
   .post(protect, createInventoryItem)
-  .get(protect, /* cacheInventory, */ getInventoryByFacility);
+  .get( protect,/* cacheInventory, */ getInventoryByFacility);
   
   InventoryRoutes.post("/scan", protect, scanAndSaveInventory);
 
 InventoryRoutes.route('/:id')
-  .get(protect, getInventoryItem)
-  .put(protect, updateInventoryItem)
-  .delete(protect, deleteInventoryItem);
+  .get(getInventoryItem)
+  .put(updateInventoryItem)
+  .delete(deleteInventoryItem);
 
 
 

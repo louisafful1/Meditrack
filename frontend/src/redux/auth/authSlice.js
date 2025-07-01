@@ -55,10 +55,7 @@ export const resetPassword = createAsyncThunk(
   async ({ password, resetToken }, thunkAPI) => {
     try {
       // Call the resetPassword service or API with password and token
-      const response = await authService.resetPassword({
-        password,
-        resetToken,
-      });
+      const response = await authService.resetPassword({ password, resetToken, });
       return response.data; // Assuming the response contains the updated user or success message
     } catch (error) {
       // Handle errors and return with rejectWithValue
@@ -279,7 +276,6 @@ const authSlice = createSlice({
         state.isLoggedIn = false;
         state.user = null;
         toast.success(action.payload);
-        console.log(action.payload);
       })
 
       .addCase(logout.rejected, (state, action) => {
@@ -287,7 +283,6 @@ const authSlice = createSlice({
         state.isError = true;
         state.message = action.payload;
         toast.error(action.payload);
-        console.log(action.payload);
       })
 
       // GET Login Status
@@ -298,7 +293,6 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.isSuccess = true;
         state.isLoggedIn = action.payload;
-        console.log(action.payload);
         if (action.payload.message === "invalid signature") {
           state.isLoggedIn = false;
         }
@@ -308,7 +302,6 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.isError = true;
         state.message = action.payload;
-        console.log(action.payload);
       })
 
       // GET User Profile
@@ -320,7 +313,6 @@ const authSlice = createSlice({
         state.isSuccess = true;
         state.isLoggedIn = true;
         state.user = action.payload;
-        console.log(action.payload);
       })
 
       .addCase(getUserProfile.rejected, (state, action) => {

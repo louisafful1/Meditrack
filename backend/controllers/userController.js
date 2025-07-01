@@ -42,6 +42,8 @@ const adminRegisterUser = asyncHandler(async (req, res) => {
       
     const resetToken = user.createPasswordResetToken();
     await user.save();
+    console.log("Unhashed token to send:", resetToken);
+console.log("Hashed token stored:", user.passwordResetToken);
   
     const resetUrl = `${process.env.FRONTEND_URL}/set-password/${resetToken}`;
   
@@ -146,7 +148,7 @@ const logoutUser = asyncHandler(async (req, res) => {
 //@access private
 
 const getUserProfile = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id).select("-password");
+    const user = await User.findById(req.user._id).populate("facility", "name address contactEmail").select("-password");
          
   if (user) {
     res.status(200).json(user);
@@ -162,16 +164,20 @@ const getUserProfile = asyncHandler(async (req, res) => {
 //@access private
 
 const getUsers = asyncHandler(async (req, res) => {
-  const user = await User.find().sort({ createdAt: -1 }).select("-password");
-       
-if (user) {
-  res.status(200).json(user);
-} else {   
-      res.status(404);
-      throw new Error('Users not Found');    
-}
+  const facilityId = req.user.facility;
 
+  const users = await User.find({ facility: facilityId })
+    .sort({ createdAt: -1 })
+    .select("-password");
+
+  if (users && users.length > 0) {
+    res.status(200).json(users);
+  } else {
+    res.status(404);
+    throw new Error('No users found for this facility');
+  }
 });
+
 
 
 // Get login status
@@ -268,7 +274,8 @@ const hashedToken = crypto
 .update(resetToken)
 .digest("hex");
 
-
+    console.log("Incoming resetToken param:", resetToken);
+console.log("Hashed version:", hashedToken);
 const user = await User.findOne({
     passwordResetToken: hashedToken,
     passwordResetExpires: { $gt: Date.now() },
@@ -278,15 +285,14 @@ if(!user){
  res.status(404)
     throw new Error("Invalid or expired Token")
     
-    }
+  }
 
     const { password } = req.body;
     user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     await user.save();
-   
-    generateToken(res, user._id);
+
     res.status(200).json({
         status: "Success",
         message: "Password Reset Successful"

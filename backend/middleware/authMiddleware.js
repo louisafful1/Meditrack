@@ -1,53 +1,53 @@
 import jwt from 'jsonwebtoken'
 import asyncHandler from 'express-async-handler'
 import User from '../models/userModels.js'
-
 const protect = asyncHandler(async (req, res, next) => {
-    let token;
+  let token = req.cookies.jwt;
 
-    token = req.cookies.jwt;
+  if (!token) {
+    res.status(401);
+    throw new Error("Not authorized, please login");
+  }
 
-    if (token) {
-        try {
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.userId).select('-password').populate("facility");
 
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            req.user = await User.findById(decoded.userId).select('-password');
-
-            next();
-
-        }catch (error) {
-            res.status(401);
-            throw new Error("Not authorized, Please login");
-        }
-    }else{
-        res.status(401);
-        throw new Error("Not authorized, Please login");
+    if (!user) {
+      res.status(401);
+      throw new Error("User not found");
     }
 
+    if (!user.active) {
+      res.status(403);
+      throw new Error("Account is inactive. Contact admin.");
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    res.status(401);
+    throw new Error("Not authorized, token failed");
+  }
 });
 
-// Admin only
-const adminOnly = asyncHandler ( async(req, res, next) => {
 
-if(req.user && req.user.role === "admin"){
-next()
-}else{
-  res.status(403)
-  throw new Error("Access Denied! - Admins Only")
-}
-
-})
-
-// Supervisor Only access
-const supervisorOnly = asyncHandler ( async(req, res, next) => {
-
-  if(req.user && req.user.role === "supervisor"){
-  next()
-  }else{
-    res.status(403)
-    throw new Error("Access Denied! - Supervisor Only")
+const adminOnly = asyncHandler(async (req, res, next) => {
+  if (req.user?.role === "admin" && req.user?.active) {
+    next();
+  } else {
+    res.status(403);
+    throw new Error("Access Denied - Admins only");
   }
-  
-  })
+});
+
+const supervisorOnly = asyncHandler(async (req, res, next) => {
+  if (req.user?.role === "supervisor" && req.user?.active) {
+    next();
+  } else {
+    res.status(403);
+    throw new Error("Access Denied - Supervisors only");
+  }
+});
 
 export { protect, adminOnly, supervisorOnly }
