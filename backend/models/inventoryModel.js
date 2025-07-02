@@ -30,8 +30,8 @@ const inventorySchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Adequate", "Low Stock", "Out of stock"],
-      default: "Adequate",
+      enum: ["available", "Low Stock", "Out of stock"],
+      default: "available",
     },
     location: {
       type: String,

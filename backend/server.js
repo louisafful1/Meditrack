@@ -41,7 +41,7 @@ connectDB();
  app.use('/api/users', userRoutes);
  app.use('/api/facilities', facilityRoutes);
  app.use('/api/inventory', InventoryRoutes);
- app.use("/api/dispensations", dispensationRoutes);
+ app.use("/api/dispensation", dispensationRoutes);
  app.use("/api/redistribution", redistributionroutes);
  app.use('/api/activity-logs', activityLogRoutes);
  app.use('/api/notifications', notificationRoutes);

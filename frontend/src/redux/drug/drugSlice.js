@@ -10,6 +10,7 @@ const initialState = {
     message: "",
     
     }
+/**** IN REFERENCE TO INVENTORY CONTROLLER/ROUTE ***/
 
     // create drug
 export const createDrug = createAsyncThunk(
@@ -72,7 +73,9 @@ export const createDrug = createAsyncThunk(
         )
 
 
-    
+
+
+
 const drugSlice = createSlice({
   name: "drug",
   initialState,
@@ -88,6 +91,8 @@ const drugSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+    /**** IN REFERENCE TO INVENTORY CONTROLLER/ROUTE ***/
+
     // create drug
         .addCase(createDrug.pending, (state) => {
           state.isLoading = true
@@ -139,6 +144,8 @@ const drugSlice = createSlice({
           state.message= action.payload
           toast.error(action.payload)
         })
+
+
 
        
 
