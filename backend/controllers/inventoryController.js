@@ -2,6 +2,7 @@ import asyncHandler from 'express-async-handler';
 import Inventory from '../models/inventoryModel.js';
 import Facility from '../models/facilityModel.js';
 import { logActivity } from '../utils/logActivity.js';
+import { checkAndCreateExpiryNotification, checkStockLevelNotification } from '../utils/notificationUtils.js';
 // import redisClient from '../config/redisClient.js';
 
 // @desc    Add new inventory item
@@ -47,6 +48,10 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
       targetId: item._id,
       message: `${drugName} added to inventory by ${req.user.name}`,
     });
+
+  // Check for expiry and stock level notifications
+  await checkAndCreateExpiryNotification(item);
+  await checkStockLevelNotification(item);
 
   res.status(201).json(item);
 });
@@ -94,6 +99,11 @@ export const scanAndSaveInventory = asyncHandler(async (req, res) => {
     targetId: savedItem._id,
     message: `${drugName} added to inventory by ${req.user.name}`,
   });
+
+  // Check for expiry and stock level notifications
+  await checkAndCreateExpiryNotification(savedItem);
+  await checkStockLevelNotification(savedItem);
+
     res.status(201).json(savedItem);
   });
 
@@ -149,6 +159,10 @@ export const updateInventoryItem = asyncHandler(async (req, res) => {
     targetId: item._id,
     message: `${req.user.name} updated ${item.drugName} batch ${item.batchNumber}`,
   });
+
+  // Check for expiry and stock level notifications after update
+  await checkAndCreateExpiryNotification(updatedItem);
+  await checkStockLevelNotification(updatedItem);
   
   res.status(200).json(updatedItem);
 });
