@@ -2,6 +2,7 @@ import asyncHandler from "express-async-handler";
 import Dispensation from "../models/dispensationModel.js";
 import Inventory from "../models/inventoryModel.js";
 import { logActivity } from "../utils/logActivity.js";
+import { checkStockLevelNotification } from "../utils/notificationUtils.js";
 import DispenseLog from "../models/aiModels/DispenseLog.js";
 
 // @desc    Dispense a drug
@@ -30,6 +31,9 @@ export const dispenseDrug = asyncHandler(async (req, res) => {
   // Reduce stock
   inventoryItem.currentStock -= quantityDispensed;
   await inventoryItem.save();
+
+  // Check for stock level notifications after dispensing
+  await checkStockLevelNotification(inventoryItem);
 
   // Create a record in the main Dispensation table
   const record = await Dispensation.create({
