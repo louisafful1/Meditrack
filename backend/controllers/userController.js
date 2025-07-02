@@ -12,10 +12,10 @@ import ActivityLog from "../models/activityLogModel.js"
 // Admin registers a user without password
 
 const adminRegisterUser = asyncHandler(async (req, res) => {
-    const {name, email, phone, role, facility} = req.body; 
+    const {name, email, phone, role} = req.body; 
 
     //Validation
-    if (!name || !email || !phone || !role || !facility ) {
+    if (!name || !email || !phone || !role) {
         res.status(400);
         throw new Error('Please fill in all required fields');
 
@@ -28,22 +28,20 @@ const adminRegisterUser = asyncHandler(async (req, res) => {
         res.status(400);
         throw new Error('User already exists');
     }
-
+  const facilityId = req.user.facility;
     //Register the user 
     const user = await User.create({
         name,
         email,
         phone,
         role, 
-        facility     
+        facility:facilityId     
 
     });
 
       
     const resetToken = user.createPasswordResetToken();
     await user.save();
-    console.log("Unhashed token to send:", resetToken);
-console.log("Hashed token stored:", user.passwordResetToken);
   
     const resetUrl = `${process.env.FRONTEND_URL}/set-password/${resetToken}`;
   
@@ -276,8 +274,6 @@ const hashedToken = crypto
 .update(resetToken)
 .digest("hex");
 
-    console.log("Incoming resetToken param:", resetToken);
-console.log("Hashed version:", hashedToken);
 const user = await User.findOne({
     passwordResetToken: hashedToken,
     passwordResetExpires: { $gt: Date.now() },

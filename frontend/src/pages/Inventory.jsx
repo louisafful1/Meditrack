@@ -97,7 +97,15 @@ const { drugs = [] } = useSelector((state) => state.drug || {});
               transition={{ duration: 0.3 }}
               className="flex flex-col items-center"
             >
-              <QRScannerSection onSwitchToManual={() => setEntryMode("manual")} />
+             <QRScannerSection
+  onSwitchToManual={() => setEntryMode("manual")}
+  onResult={(data) => {
+    const parsed = JSON.parse(data);
+    console.log("Scanned data:", parsed);
+    // Optionally: auto-fill form or submit to backend
+  }}
+/>
+
             </motion.div>
           ) : (
             <motion.div

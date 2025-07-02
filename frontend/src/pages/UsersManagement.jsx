@@ -27,10 +27,10 @@ const initialState = {
 const ROLES = ["admin", "staff", "pharmacist", "supervisor"];
 
 const roleColors = {
-  Admin: "bg-purple-500/20 text-purple-300",
-  Staff: "bg-blue-500/20 text-blue-300",
-  Pharmacist: "bg-green-500/20 text-green-300",
-  Supervisor: "bg-amber-500/20 text-amber-300",
+  admin: "bg-purple-500/20 text-purple-300",
+  staff: "bg-blue-500/20 text-blue-300",
+  pharmacist: "bg-green-500/20 text-green-300",
+  supervisor: "bg-amber-500/20 text-amber-300",
 };
 
 export default function UsersManagement() {
