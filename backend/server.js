@@ -10,7 +10,9 @@ import InventoryRoutes from './routes/inventoryRoutes.js';
 import dispensationRoutes from './routes/dispensationRoutes.js';
 import redistributionroutes from './routes/redistributionRoutes.js';
 import activityLogRoutes from './routes/activityLogRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import { setupDailySnapshotCrons } from './cron/snapshotJob.js';
+import { setupExpiryNotificationCron } from './cron/expiryNotificationCron.js';
 import aiSnapshotRoutes from './routes/aiRoutes/aiSnapshotRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 // import redisClient from './config/redisClient.js';
@@ -42,6 +44,7 @@ connectDB();
  app.use("/api/dispensations", dispensationRoutes);
  app.use("/api/redistribution", redistributionroutes);
  app.use('/api/activity-logs', activityLogRoutes);
+ app.use('/api/notifications', notificationRoutes);
 
 //  ai routes
  app.use('/api/ai', aiSnapshotRoutes);
@@ -57,3 +60,4 @@ app.use(errorHandler);
 app.listen(port, () => console.log(`Server started on port ${port}`));
 
 setupDailySnapshotCrons()
+setupExpiryNotificationCron()
