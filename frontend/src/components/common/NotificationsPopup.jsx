@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Bell } from "lucide-react";
+import { Bell, X, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSocket } from "../../hooks/useSocket";
 import axios from "axios";
@@ -14,7 +14,13 @@ const NotificationsPopup = () => {
   const [loading, setLoading] = useState(false);
   
   // Get real-time notifications from socket
-  const { notifications: realtimeNotifications, markNotificationAsRead, isConnected } = useSocket();
+  const { 
+    notifications: realtimeNotifications, 
+    markNotificationAsRead, 
+    removeNotification, 
+    markAllNotificationsAsRead,
+    isConnected 
+  } = useSocket();
 
   // Fetch existing notifications from API on component mount
   useEffect(() => {
@@ -99,6 +105,37 @@ const NotificationsPopup = () => {
     }
   };
 
+  // Function to handle deleting notification
+  const handleDeleteNotification = async (notificationId, event) => {
+    event.stopPropagation(); // Prevent marking as read when deleting
+    try {
+      await axios.delete(`/api/notifications/${notificationId}`);
+      
+      // Remove from both real-time and API notifications
+      setApiNotifications(prev => prev.filter(notif => notif._id !== notificationId));
+      removeNotification(notificationId);
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+    }
+  };
+
+  // Function to handle marking all as read
+  const handleMarkAllAsRead = async () => {
+    try {
+      await axios.put('/api/notifications/mark-all-read');
+      
+      // Update all notifications to read status
+      setApiNotifications(prev => 
+        prev.map(notif => ({ ...notif, isRead: true }))
+      );
+      
+      // Mark all real-time notifications as read
+      markAllNotificationsAsRead();
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  };
+
   // Function to format time ago
   const formatTimeAgo = (createdAt) => {
     const now = new Date();
@@ -124,7 +161,9 @@ const NotificationsPopup = () => {
         >
           <Bell size={20} className="text-gray-300" />
           {totalUnreadCount > 0 && (
-            <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />
+            <span className="absolute -top-1 -right-1 min-w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center px-1">
+              {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+            </span>
           )}
         </button>
       </div>
@@ -155,28 +194,6 @@ const NotificationsPopup = () => {
                      title={isConnected ? 'Connected' : 'Disconnected'}>
                 </div>
               </div>
-              
-              {/* Test button for development */}
-              {import.meta.env.DEV && (
-                <button
-                  onClick={async () => {
-                    try {
-                      await axios.post('/api/notifications/test', {
-                        title: 'Test Notification',
-                        message: `Test sent at ${new Date().toLocaleTimeString()}`,
-                        type: 'LOW_STOCK',
-                        priority: 'HIGH'
-                      });
-                    } catch (error) {
-                      console.error('Error sending test notification:', error);
-                    }
-                  }}
-                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded"
-                  disabled={!isConnected}
-                >
-                  Test
-                </button>
-              )}
             </div>
 
             <div className="max-h-80 overflow-y-auto">
@@ -188,70 +205,96 @@ const NotificationsPopup = () => {
                 allNotifications.map(notification => (
                   <div
                     key={notification._id}
-                    className={`p-3 border-b border-gray-800 hover:bg-gray-800 cursor-pointer transition-colors ${
+                    className={`group p-3 border-b border-gray-800 hover:bg-gray-800 transition-colors ${
                       !notification.isRead ? "bg-gray-800/50 border-l-4 border-l-blue-500" : ""
                     }`}
-                    onClick={() => handleMarkAsRead(notification._id)}
                   >
-                    <div className="flex justify-between items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm font-medium text-white truncate">
-                            {notification.title}
+                    <div 
+                      className="cursor-pointer"
+                      onClick={() => handleMarkAsRead(notification._id)}
+                    >
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-medium text-white truncate">
+                              {notification.title}
+                            </p>
+                            {!notification.isRead && (
+                              <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                            )}
+                          </div>
+                          
+                          <p className="text-xs text-gray-400 mb-2 line-clamp-2">
+                            {notification.message}
                           </p>
-                          {!notification.isRead && (
-                            <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
-                          )}
+                          
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-xs px-2 py-1 rounded flex-shrink-0 ${
+                              notification.priority === 'CRITICAL' ? 'bg-red-600 text-white' :
+                              notification.priority === 'HIGH' ? 'bg-orange-600 text-white' :
+                              notification.priority === 'MEDIUM' ? 'bg-yellow-600 text-black' :
+                              'bg-blue-600 text-white'
+                            }`}>
+                              {notification.priority}
+                            </span>
+                            
+                            <span className={`text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 flex-shrink-0 ${
+                              notification.type === 'DRUG_EXPIRED' ? 'bg-red-700' :
+                              notification.type === 'DRUG_EXPIRING' ? 'bg-yellow-700' :
+                              notification.type === 'OUT_OF_STOCK' ? 'bg-red-700' :
+                              notification.type === 'LOW_STOCK' ? 'bg-orange-700' :
+                              'bg-gray-700'
+                            }`}>
+                              {notification.type.replace(/_/g, ' ')}
+                            </span>
+                            
+                            {notification.drugName && (
+                              <span className="text-xs text-gray-500 truncate">
+                                {notification.drugName}
+                              </span>
+                            )}
+                            
+                            {notification.batchNumber && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-gray-500 truncate">
+                                  Batch: {notification.batchNumber}
+                                </span>
+                                
+                                {/* Delete button - positioned after batch name */}
+                                <button
+                                  onClick={(e) => handleDeleteNotification(notification._id, e)}
+                                  className="opacity-0 group-hover:opacity-100 p-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-all flex-shrink-0 ml-1"
+                                  title="Delete notification"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            )}
+                            
+                            {/* Delete button for notifications without batch number */}
+                            {!notification.batchNumber && (
+                              <button
+                                onClick={(e) => handleDeleteNotification(notification._id, e)}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-all flex-shrink-0 ml-1"
+                                title="Delete notification"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                         
-                        <p className="text-xs text-gray-400 mb-2 line-clamp-2">
-                          {notification.message}
-                        </p>
-                        
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-xs px-2 py-1 rounded flex-shrink-0 ${
-                            notification.priority === 'CRITICAL' ? 'bg-red-600 text-white' :
-                            notification.priority === 'HIGH' ? 'bg-orange-600 text-white' :
-                            notification.priority === 'MEDIUM' ? 'bg-yellow-600 text-black' :
-                            'bg-blue-600 text-white'
-                          }`}>
-                            {notification.priority}
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <span className="text-xs text-gray-500">
+                            {formatTimeAgo(notification.createdAt)}
                           </span>
                           
-                          <span className={`text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 flex-shrink-0 ${
-                            notification.type === 'DRUG_EXPIRED' ? 'bg-red-700' :
-                            notification.type === 'DRUG_EXPIRING' ? 'bg-yellow-700' :
-                            notification.type === 'OUT_OF_STOCK' ? 'bg-red-700' :
-                            notification.type === 'LOW_STOCK' ? 'bg-orange-700' :
-                            'bg-gray-700'
-                          }`}>
-                            {notification.type.replace(/_/g, ' ')}
-                          </span>
-                          
-                          {notification.drugName && (
-                            <span className="text-xs text-gray-500 truncate">
-                              {notification.drugName}
-                            </span>
-                          )}
-                          
-                          {notification.batchNumber && (
-                            <span className="text-xs text-gray-500 truncate">
-                              Batch: {notification.batchNumber}
+                          {notification.facility?.name && (
+                            <span className="text-xs text-gray-600 truncate max-w-20">
+                              {notification.facility.name}
                             </span>
                           )}
                         </div>
-                      </div>
-                      
-                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <span className="text-xs text-gray-500">
-                          {formatTimeAgo(notification.createdAt)}
-                        </span>
-                        
-                        {notification.facility?.name && (
-                          <span className="text-xs text-gray-600 truncate max-w-20">
-                            {notification.facility.name}
-                          </span>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -264,8 +307,16 @@ const NotificationsPopup = () => {
             </div>
 
             <div className="p-2 border-t border-gray-700 text-center">
-              <button className="text-sm text-indigo-400 hover:text-indigo-300">
-                Mark all as read
+              <button 
+                onClick={handleMarkAllAsRead}
+                className={`text-sm transition-colors ${
+                  totalUnreadCount === 0 
+                    ? 'text-gray-500 cursor-not-allowed' 
+                    : 'text-indigo-400 hover:text-indigo-300'
+                }`}
+                disabled={totalUnreadCount === 0}
+              >
+                Mark all as read {totalUnreadCount > 0 && `(${totalUnreadCount})`}
               </button>
             </div>
           </motion.div>
