@@ -23,6 +23,7 @@ const NotificationsPopup = () => {
     markNotificationAsRead, 
     removeNotification, 
     markAllNotificationsAsRead,
+    clearNotifications,
     isConnected 
   } = useSocket();
 
@@ -157,6 +158,28 @@ const NotificationsPopup = () => {
     }
   };
 
+  // Function to handle clearing all notifications
+  const handleClearAll = async () => {
+    if (allNotifications.length === 0) return;
+    
+    try {
+      // Delete all notifications from API
+      const deletePromises = allNotifications.map(notification => 
+        axios.delete(`/api/notifications/${notification._id}`)
+      );
+      
+      await Promise.all(deletePromises);
+      
+      // Clear both API and real-time notifications
+      setApiNotifications([]);
+      clearNotifications();
+      
+      console.log('All notifications cleared successfully');
+    } catch (error) {
+      console.error('Error clearing all notifications:', error);
+    }
+  };
+
   // Function to format time ago
   const formatTimeAgo = (createdAt) => {
     const now = new Date();
@@ -215,6 +238,17 @@ const NotificationsPopup = () => {
                      title={isConnected ? 'Connected' : 'Disconnected'}>
                 </div>
               </div>
+              
+              {/* Clear all button */}
+              {allNotifications.length > 0 && (
+                <button
+                  onClick={handleClearAll}
+                  className="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-red-900/20"
+                  title="Clear all notifications"
+                >
+                  Clear all
+                </button>
+              )}
             </div>
 
             <div className="max-h-80 overflow-y-auto">
