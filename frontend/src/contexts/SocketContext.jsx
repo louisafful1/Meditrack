@@ -78,11 +78,19 @@ const SocketProvider = ({ children }) => {
     );
   };
 
+  // Function to mark all notifications as read
+  const markAllNotificationsAsRead = () => {
+    setNotifications(prev => 
+      prev.map(notification => ({ ...notification, isRead: true }))
+    );
+  };
+
   const value = {
     socket,
     isConnected,
     notifications,
     markNotificationAsRead,
+    markAllNotificationsAsRead,
     clearNotifications,
     removeNotification,
     unreadCount: notifications.filter(n => !n.isRead).length

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Bell, X, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSocket } from "../../hooks/useSocket";
+import { useSelector } from "react-redux";
 import axios from "axios";
 
 const NotificationsPopup = () => {
@@ -12,6 +13,9 @@ const NotificationsPopup = () => {
   const [buttonPosition, setButtonPosition] = useState({ top: 0, right: 0 });
   const [apiNotifications, setApiNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // Get user info from Redux
+  const { userInfo } = useSelector((state) => state.auth);
   
   // Get real-time notifications from socket
   const { 
@@ -121,16 +125,33 @@ const NotificationsPopup = () => {
 
   // Function to handle marking all as read
   const handleMarkAllAsRead = async () => {
+    if (totalUnreadCount === 0) return;
+    
     try {
-      await axios.put('/api/notifications/mark-all-read');
+      // Prepare request body with user and facility info
+      const requestBody = {};
+      if (userInfo?.id) {
+        requestBody.userId = userInfo.id;
+      }
+      if (userInfo?.facility) {
+        requestBody.facilityId = userInfo.facility;
+      }
       
-      // Update all notifications to read status
+      console.log('Marking all notifications as read with:', requestBody);
+      
+      await axios.put('/api/notifications/mark-all-read', requestBody);
+      
+      console.log('API call successful, updating local state...');
+      
+      // Update all API notifications to read status
       setApiNotifications(prev => 
         prev.map(notif => ({ ...notif, isRead: true }))
       );
       
       // Mark all real-time notifications as read
       markAllNotificationsAsRead();
+      
+      console.log('All notifications marked as read successfully');
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
     }
@@ -296,10 +317,10 @@ const NotificationsPopup = () => {
             <div className="p-2 border-t border-gray-700 text-center">
               <button 
                 onClick={handleMarkAllAsRead}
-                className={`text-sm transition-colors ${
+                className={`text-sm transition-colors cursor-pointer ${
                   totalUnreadCount === 0 
                     ? 'text-gray-500 cursor-not-allowed' 
-                    : 'text-indigo-400 hover:text-indigo-300'
+                    : 'text-indigo-400 hover:text-indigo-300 cursor-pointer'
                 }`}
                 disabled={totalUnreadCount === 0}
               >
