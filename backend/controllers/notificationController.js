@@ -147,6 +147,10 @@ const createExpiryNotification = async (inventoryItem, daysToExpiry) => {
       type = "DRUG_EXPIRING";
       title = "Drug Expiring in 30 Days";
       priority = "MEDIUM";
+    }else if (daysToExpiry <= 90) {
+      type = "DRUG_EXPIRING";
+      title = "Drug Expiring in 3 Months";
+      priority = "LOW";
     } else {
       return; // Don't create notification for drugs expiring in more than 30 days
     }

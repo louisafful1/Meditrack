@@ -80,7 +80,7 @@ const drugSlice = createSlice({
   name: "drug",
   initialState,
   reducers: {
-    RESET_drug(state){
+    RESET_DRUG(state){
       state.drugs = [];
         state.isError= false
         state.isSuccess= false

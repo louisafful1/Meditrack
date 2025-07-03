@@ -26,7 +26,7 @@ const adminRegisterUser = asyncHandler(async (req, res) => {
 
     if (userExists) {
         res.status(400);
-        throw new Error('User already exists');
+        throw new Error('User already exist');
     }
   const facilityId = req.user.facility;
     //Register the user 
@@ -170,12 +170,8 @@ const getUsers = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .select("-password");
 
-  if (users && users.length > 0) {
     res.status(200).json(users);
-  } else {
-    res.status(404);
-    throw new Error('No users found for this facility');
-  }
+  
 });
 
 

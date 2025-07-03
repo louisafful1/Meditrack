@@ -15,6 +15,8 @@ import { setupDailySnapshotCrons } from './cron/snapshotJob.js';
 import { setupExpiryNotificationCron } from './cron/expiryNotificationCron.js';
 import aiSnapshotRoutes from './routes/aiRoutes/aiSnapshotRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
 // import redisClient from './config/redisClient.js';
 
 dotenv.config();
@@ -45,6 +47,8 @@ connectDB();
  app.use("/api/redistribution", redistributionroutes);
  app.use('/api/activity-logs', activityLogRoutes);
  app.use('/api/notifications', notificationRoutes);
+ app.use('/api/dashboard', dashboardRoutes);
+ app.use('/api/reports', reportRoutes);
 
 //  ai routes
  app.use('/api/ai', aiSnapshotRoutes);

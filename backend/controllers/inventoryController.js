@@ -34,7 +34,7 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
     expiryDate,
     receivedDate,
     location,
-    status: status || "Adequate",
+    status: status || "adequate",
     facility: facilityId,
     createdBy: req.user._id,
   });

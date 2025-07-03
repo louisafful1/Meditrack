@@ -1,5 +1,7 @@
-import Header from "../components/common/Header";
+import { useEffect } from "react"; 
+import { useDispatch, useSelector } from "react-redux"; 
 
+import Header from "../components/common/Header";
 import {
   Package,
   Pill,
@@ -11,15 +13,46 @@ import {
 } from "lucide-react";
 import StatCard from "../components/common/StatCard";
 import MonthlyDrugTrend from "../components/dashboard/MonthlyDrugTrend";
-import AISuggestionsSection from "../components/dashboard/AISuggestionsSection";
-import ExpiryDataChart from "../components/dashboard/expiryDataChart";
+import TopDispensedDrugs from "../components/dashboard/TopDispensedDrugs";
+
+// Import dashboard actions and slice
+import {
+  getDashboardSummaryStats,
+  RESET_DASHBOARD,
+} from "../redux/dashboard/dashboardSlice"; 
+import ExpiryDataChart from "../components/dashboard/ExpiryDataChart";
 
 const DashboardPage = () => {
-	const AISuggestions = [
-        "Transfer 200 units of Amoxicillin to Hospital B due to rising demand.",
-        "Paracetamol stock at Clinic A exceeds average usage—consider redistribution.",
-        "Ibuprofen is low at Warehouse 1. Pull 100 units from Clinic B."
-      ];
+  const dispatch = useDispatch();
+  const { summaryStats, isLoading, isError, message } = useSelector(
+    (state) => state.dashboard
+  );
+
+  useEffect(() => {
+    // Dispatch action to get summary stats when component mounts
+    dispatch(getDashboardSummaryStats());
+
+    // Optional: Reset dashboard state when component unmounts
+    return () => {
+      dispatch(RESET_DASHBOARD());
+    };
+  }, [dispatch]); // Only dispatch once on mount
+
+  if (isLoading && !summaryStats.totalDrugs) { // Only show loading if no data yet
+    return (
+      <div className="flex-1 flex items-center justify-center text-gray-300">
+        {/* Loading Dashboard Data... */}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-red-400">
+        {/* Error loading dashboard: {message} */}
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto">
@@ -31,25 +64,25 @@ const DashboardPage = () => {
           <StatCard
             name="Total Drugs"
             icon={Package}
-            value="1,280"
+            value={summaryStats.totalDrugs.toLocaleString()} 
             color="#10B981"
           />
           <StatCard
             name="Low Stocks"
             icon={AlertTriangle}
-            value="860"
+            value={summaryStats.lowStocks.toLocaleString()} 
             color="#8B5CF6"
           />
           <StatCard
             name="Nearing Expiry"
             icon={Clock}
-            value="42"
+            value={summaryStats.nearingExpiry.toLocaleString()} 
             color="#EC4899"
           />
           <StatCard
             name="Redistribution"
             icon={Repeat}
-            value="95"
+            value={summaryStats.redistribution.toLocaleString()} 
             color="#3B82F6"
           />
         </div>
@@ -58,7 +91,8 @@ const DashboardPage = () => {
           <MonthlyDrugTrend />
           <ExpiryDataChart />
         </div>
-		<AISuggestionsSection suggestions={AISuggestions} />
+        {/* Top Dispensed Drugs */}
+        <TopDispensedDrugs />
 
       </main>
     </div>
