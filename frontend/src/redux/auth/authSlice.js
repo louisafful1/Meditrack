@@ -8,8 +8,9 @@ const initialState = {
   users: [],
   isError: false,
   isSuccess: false,
-  isLoading: false,
+  isLoading: true, // Start with loading true to check auth status on app load
   message: "",
+  isInitialized: false, // Track if initial auth check is complete
 };
 
 // Register User
@@ -207,6 +208,10 @@ const authSlice = createSlice({
     SET_LOGIN_STATUS(state, action) {
       state.isLoggedIn = action.payload;
     },
+    SET_INITIALIZED(state) {
+      state.isInitialized = true;
+      state.isLoading = false;
+    },
   },
 
   extraReducers: (builder) => {
@@ -234,6 +239,7 @@ const authSlice = createSlice({
         state.isSuccess = true;
         state.isLoggedIn = true;
         state.user = action.payload;
+        state.isInitialized = true;
         toast.success("Login successful"); 
       })
       .addCase(login.rejected, (state, action) => {
@@ -242,6 +248,7 @@ const authSlice = createSlice({
         state.message = action.payload;
         state.user = null;
         state.isLoggedIn = false; 
+        state.isInitialized = true;
         toast.error(action.payload); 
       })
 
@@ -270,6 +277,7 @@ const authSlice = createSlice({
         state.isSuccess = true;
         state.isLoggedIn = false;
         state.user = null;
+        state.isInitialized = true; // Keep initialized after logout
         toast.success(action.payload); 
       })
       .addCase(logout.rejected, (state, action) => {
@@ -304,6 +312,7 @@ const authSlice = createSlice({
         state.isSuccess = true;
         state.isLoggedIn = true;
         state.user = action.payload;
+        state.isInitialized = true;
       })
       .addCase(getUserProfile.rejected, (state, action) => {
         state.isLoading = false;
@@ -312,6 +321,7 @@ const authSlice = createSlice({
         // Set logged out state when profile fetch fails
         state.isLoggedIn = false;
         state.user = null;
+        state.isInitialized = true;
       })
 
       // GET Users (for admin panel)
@@ -389,6 +399,6 @@ const authSlice = createSlice({
   },
 });
 
-export const { RESET_AUTH, SET_LOGIN_STATUS } = authSlice.actions;
+export const { RESET_AUTH, SET_LOGIN_STATUS, SET_INITIALIZED } = authSlice.actions;
 
 export default authSlice.reducer;

@@ -4,9 +4,10 @@ import { useSelector } from "react-redux";
 import Loader from "../src/components/loader/loader"; 
 
 const PrivateRoute = () => {
-  const { user, isLoading } = useSelector((state) => state.auth);
+  const { user, isLoading, isInitialized } = useSelector((state) => state.auth);
 
-  if (isLoading) {
+  // Show loader while checking authentication status
+  if (isLoading || !isInitialized) {
     return (
        <Loader />
     );

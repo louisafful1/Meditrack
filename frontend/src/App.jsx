@@ -14,7 +14,7 @@ import UsersManagement from "./pages/UsersManagement";
 import ActivityLogsPage from "./pages/ActivityLogsPage";
 import PrivateRoute from "../utils/PrivateRoute";
 import Layout from "./components/common/Layout";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { getUserProfile } from "./redux/auth/authSlice";
 import { useEffect } from "react";
 import QRCodeGenerator from "../utils/QRCodeGenerator";
@@ -23,10 +23,14 @@ function App() {
   axios.defaults.withCredentials = true;
   axios.defaults.baseURL = 'http://localhost:5000';
   const dispatch = useDispatch();
+  const { isInitialized } = useSelector((state) => state.auth);
 
   useEffect(() => {
-    dispatch(getUserProfile()); // try to load the user from server
-  }, [dispatch]);
+    // Only fetch user profile if app hasn't been initialized yet
+    if (!isInitialized) {
+      dispatch(getUserProfile()); // try to load the user from server
+    }
+  }, [dispatch, isInitialized]);
   
   return (
     <>
