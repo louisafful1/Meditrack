@@ -7,25 +7,33 @@ export const API_URL = `${BACKEND_URL}/api/dashboard/`;
 
 // Get Dashboard Summary Stats
 const getSummaryStats = async () => {
-    const response = await axios.get(API_URL + "summary");
+    const response = await axios.get(API_URL + "summary", {
+        withCredentials: true
+    });
     return response.data;
 };
 
 // Get Monthly Drug Trend Data
 const getMonthlyTrend = async () => {
-    const response = await axios.get(API_URL + "monthly-trend");
+    const response = await axios.get(API_URL + "monthly-trend", {
+        withCredentials: true
+    });
     return response.data;
 };
 
 // Get Expiry Overview Data
 const getExpiryOverview = async () => {
-    const response = await axios.get(API_URL + "expiry-overview");
+    const response = await axios.get(API_URL + "expiry-overview", {
+        withCredentials: true
+    });
     return response.data;
 };
 
 // Get Top Dispensed Drugs Data
 const getTopDispensedDrugs = async () => {
-    const response = await axios.get(API_URL + "top-dispensed-drugs");
+    const response = await axios.get(API_URL + "top-dispensed-drugs", {
+        withCredentials: true
+    });
     return response.data;
 };
 

@@ -15,63 +15,82 @@ const register = async (userData) => {
 
 // Login User
 const login = async (userData) => {
-  const response = await axios.post(API_URL + "login", userData);
+  const response = await axios.post(API_URL + "login", userData, {
+    withCredentials: true
+  });
   return response.data
 };
 
 // Logout User
 const logout = async () => {
-  const response = await axios.post(API_URL + "logout");
+  const response = await axios.post(API_URL + "logout", {}, {
+    withCredentials: true
+  });
   return response.data.message;
 };
 
 // Get Login Status 
 const getLoginStatus = async () => {
-  const response = await axios.get(API_URL + "getLoginStatus");
+  const response = await axios.get(API_URL + "getLoginStatus", {
+    withCredentials: true
+  });
   return response.data;
 };
 
 // Get User Profile 
 const getUserProfile = async () => {
-  const response = await axios.get(API_URL + "profile");
+  const response = await axios.get(API_URL + "profile", {
+    withCredentials: true
+  });
   return response.data;
 };
 
 // Get Users 
 const getUsers = async () => {
-  const response = await axios.get(API_URL);
+  const response = await axios.get(API_URL, {
+    withCredentials: true
+  });
   return response.data;
 };
 
 // Update User
 const updateUser = async (userData) => {
-  const response = await axios.put(API_URL + "profile", userData);
+  const response = await axios.put(API_URL + "profile", userData, {
+    withCredentials: true
+  });
   return response.data;
 };
 
 
 // Forgot Password
 const forgotPassword = async (email) => {
-  const response = await axios.post(API_URL + "forgotPassword", { email });
+  const response = await axios.post(API_URL + "forgotPassword", { email }, {
+    withCredentials: true
+  });
   return response.data;
 };
 
 
 // Reset Password
 const resetPassword = async ({ password, resetToken }) => {
-  const response = await axios.put(`${API_URL}resetPassword/${resetToken}`, { password });
+  const response = await axios.put(`${API_URL}resetPassword/${resetToken}`, { password }, {
+    withCredentials: true
+  });
   return response.data;
 };
 //toggle status
 const toggleStatus = async (userId) => {
-  const response = await axios.patch(`${API_URL}${userId}/toggle-status`);
+  const response = await axios.patch(`${API_URL}${userId}/toggle-status`, {}, {
+    withCredentials: true
+  });
   return response.data;
 };
 // delete User
 const deleteUser = async(userId) => {
-    const response = await axios.delete(`${API_URL}${userId}`);
+    const response = await axios.delete(`${API_URL}${userId}`, {
+      withCredentials: true
+    });
     return response.data;
-
 }
 
 

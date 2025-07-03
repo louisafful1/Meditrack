@@ -215,7 +215,7 @@ const authSlice = createSlice({
       .addCase(register.pending, (state) => {
         state.isLoading = true;
       })
-      .addCase(register.fulfilled, (state, action) => {
+      .addCase(register.fulfilled, (state) => {
         state.isLoading = false;
         state.isSuccess = true;
       })
@@ -249,7 +249,7 @@ const authSlice = createSlice({
       .addCase(resetPassword.pending, (state) => {
         state.isLoading = true;
       })
-      .addCase(resetPassword.fulfilled, (state, action) => {
+      .addCase(resetPassword.fulfilled, (state) => {
         state.isLoading = false;
         state.isSuccess = true;
         toast.success("Password reset successful"); 
@@ -309,8 +309,8 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.isError = true;
         state.message = action.payload;
-        toast.error("Failed to fetch user profile: " + action.payload);
-        state.isLoggedIn = false; 
+        // Set logged out state when profile fetch fails
+        state.isLoggedIn = false;
         state.user = null;
       })
 

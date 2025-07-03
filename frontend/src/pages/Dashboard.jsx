@@ -38,18 +38,11 @@ const DashboardPage = () => {
     };
   }, [dispatch]); // Only dispatch once on mount
 
-  if (isLoading && !summaryStats.totalDrugs) { // Only show loading if no data yet
-    return (
-      <div className="flex-1 flex items-center justify-center text-gray-300">
-        {/* Loading Dashboard Data... */}
-      </div>
-    );
-  }
-
+  // Show error state if there's an error
   if (isError) {
     return (
       <div className="flex-1 flex items-center justify-center text-red-400">
-        {/* Error loading dashboard: {message} */}
+        Error loading dashboard: {message}
       </div>
     );
   }
@@ -61,36 +54,63 @@ const DashboardPage = () => {
       <main className="p-6 space-y-6">
         {/* Stat Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-          <StatCard
-            name="Total Drugs"
-            icon={Package}
-            value={summaryStats.totalDrugs.toLocaleString()} 
-            color="#10B981"
-          />
-          <StatCard
-            name="Low Stocks"
-            icon={AlertTriangle}
-            value={summaryStats.lowStocks.toLocaleString()} 
-            color="#8B5CF6"
-          />
-          <StatCard
-            name="Nearing Expiry"
-            icon={Clock}
-            value={summaryStats.nearingExpiry.toLocaleString()} 
-            color="#EC4899"
-          />
-          <StatCard
-            name="Redistribution"
-            icon={Repeat}
-            value={summaryStats.redistribution.toLocaleString()} 
-            color="#3B82F6"
-          />
+          {isLoading && !summaryStats.totalDrugs ? (
+            // Show loading skeleton for stat cards
+            <>
+              <div className="bg-gray-800 p-6 rounded-lg animate-pulse">
+                <div className="h-4 bg-gray-700 rounded w-24 mb-2"></div>
+                <div className="h-8 bg-gray-700 rounded w-16"></div>
+              </div>
+              <div className="bg-gray-800 p-6 rounded-lg animate-pulse">
+                <div className="h-4 bg-gray-700 rounded w-24 mb-2"></div>
+                <div className="h-8 bg-gray-700 rounded w-16"></div>
+              </div>
+              <div className="bg-gray-800 p-6 rounded-lg animate-pulse">
+                <div className="h-4 bg-gray-700 rounded w-24 mb-2"></div>
+                <div className="h-8 bg-gray-700 rounded w-16"></div>
+              </div>
+              <div className="bg-gray-800 p-6 rounded-lg animate-pulse">
+                <div className="h-4 bg-gray-700 rounded w-24 mb-2"></div>
+                <div className="h-8 bg-gray-700 rounded w-16"></div>
+              </div>
+            </>
+          ) : (
+            // Show actual stat cards when data is loaded
+            <>
+              <StatCard
+                name="Total Drugs"
+                icon={Package}
+                value={summaryStats.totalDrugs?.toLocaleString() || '0'} 
+                color="#10B981"
+              />
+              <StatCard
+                name="Low Stocks"
+                icon={AlertTriangle}
+                value={summaryStats.lowStocks?.toLocaleString() || '0'} 
+                color="#8B5CF6"
+              />
+              <StatCard
+                name="Nearing Expiry"
+                icon={Clock}
+                value={summaryStats.nearingExpiry?.toLocaleString() || '0'} 
+                color="#EC4899"
+              />
+              <StatCard
+                name="Redistribution"
+                icon={Repeat}
+                value={summaryStats.redistribution?.toLocaleString() || '0'} 
+                color="#3B82F6"
+              />
+            </>
+          )}
         </div>
+        
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <MonthlyDrugTrend />
           <ExpiryDataChart />
         </div>
+        
         {/* Top Dispensed Drugs */}
         <TopDispensedDrugs />
 
