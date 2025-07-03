@@ -27,11 +27,11 @@ const Header = ({ title }) => {
   };
 
   return (
-    <header className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg border-b border-gray-700 z-10">
+    <header className="bg-gray-800 bg-opacity-50 backdrop-blur-md shadow-lg border-b border-gray-700 z-40" style={{ position: 'relative' }}>
       <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-gray-100">{title}</h1>
 
-        <div className="flex items-center gap-4 relative">
+        <div className="flex items-center gap-4 relative" style={{ zIndex: 1000 }}>
           {/* ✅ Facility Badge */}
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-100 text-teal-800 font-mono uppercase tracking-wider whitespace-nowrap">
             {user?.facility?.name || "Loading..."}

@@ -1,9 +1,46 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Bell } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const NotificationsPopup = () => {
   const [open, setOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const buttonRef = useRef(null);
+  const [buttonPosition, setButtonPosition] = useState({ top: 0, right: 0 });
+
+  // Update button position when opening dropdown
+  const updateButtonPosition = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setButtonPosition({
+        top: rect.bottom + window.scrollY,
+        right: window.innerWidth - rect.right
+      });
+    }
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target) && 
+          buttonRef.current && !buttonRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const handleToggle = () => {
+    if (!open) {
+      updateButtonPosition();
+    }
+    setOpen(!open);
+  };
 
   const notifications = [
     {
@@ -32,25 +69,36 @@ const NotificationsPopup = () => {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="p-2 rounded-full hover:bg-gray-700 relative"
-      >
-        <Bell size={20} className="text-gray-300" />
-        {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />
-        )}
-      </button>
+    <>
+      <div className="relative">
+        <button
+          ref={buttonRef}
+          onClick={handleToggle}
+          className="p-2 rounded-full hover:bg-gray-700 relative"
+        >
+          <Bell size={20} className="text-gray-300" />
+          {unreadCount > 0 && (
+            <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />
+          )}
+        </button>
+      </div>
 
-      <AnimatePresence>
-        {open && (
+      {/* Portal for dropdown */}
+      {open && createPortal(
+        <AnimatePresence>
           <motion.div
+            ref={dropdownRef}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="absolute right-0 mt-2 w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-xl z-50"
+            className="fixed w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-xl"
+            style={{
+              zIndex: 9999,
+              top: buttonPosition.top + 8,
+              right: buttonPosition.right,
+              maxHeight: '400px'
+            }}
           >
             <div className="p-3 border-b border-gray-700">
               <h3 className="font-semibold text-white text-sm">Notifications</h3>
@@ -87,9 +135,10 @@ const NotificationsPopup = () => {
               </button>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+        </AnimatePresence>,
+        document.body
+      )}
+    </>
   );
 };
 
