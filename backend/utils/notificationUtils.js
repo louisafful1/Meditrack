@@ -1,4 +1,5 @@
 import { createExpiryNotification } from "../controllers/notificationController.js";
+import { emitNotificationToFacility, emitNotificationToUser } from "../config/socketConfig.js";
 
 // Utility function to check if a drug needs expiry notification
 const checkAndCreateExpiryNotification = async (inventoryItem) => {
@@ -72,6 +73,21 @@ const checkStockLevelNotification = async (inventoryItem) => {
     });
 
     await notification.save();
+
+    // Populate the notification for real-time emission
+    const populatedNotification = await Notification.findById(notification._id)
+      .populate("facility", "name location")
+      .populate("drugId", "drugName batchNumber currentStock expiryDate")
+      .populate("userId", "name email");
+
+    // Emit real-time notification to facility
+    emitNotificationToFacility(inventoryItem.facility, populatedNotification);
+
+    // If there's a specific user, emit to them as well
+    if (populatedNotification.userId) {
+      emitNotificationToUser(populatedNotification.userId, populatedNotification);
+    }
+
     console.log(`Stock level notification created for ${inventoryItem.drugName}`);
   } catch (error) {
     console.error("Error creating stock level notification:", error);

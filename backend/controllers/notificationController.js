@@ -3,7 +3,9 @@ import Inventory from "../models/inventoryModel.js";
 import Facility from "../models/facilityModel.js";
 import User from "../models/userModels.js";
 import { triggerExpiryCheck } from "../cron/expiryNotificationCron.js";
+import { emitNotificationToFacility, emitNotificationToUser } from "../config/socketConfig.js";
 import asyncHandler from "express-async-handler";
+import mongoose from "mongoose";
 
 // @desc    Get notifications for a facility or user
 // @route   GET /api/notifications
@@ -189,6 +191,21 @@ const createExpiryNotification = async (inventoryItem, daysToExpiry) => {
     });
 
     await notification.save();
+    
+    // Populate the notification for real-time emission
+    const populatedNotification = await Notification.findById(notification._id)
+      .populate("facility", "name location")
+      .populate("drugId", "drugName batchNumber currentStock expiryDate")
+      .populate("userId", "name email");
+
+    // Emit real-time notification to facility
+    emitNotificationToFacility(inventoryItem.facility, populatedNotification);
+
+    // If there's a specific user, emit to them as well
+    if (populatedNotification.userId) {
+      emitNotificationToUser(populatedNotification.userId, populatedNotification);
+    }
+
     console.log(`Expiry notification created for ${inventoryItem.drugName}`);
   } catch (error) {
     console.error("Error creating expiry notification:", error);
@@ -211,6 +228,61 @@ const manualExpiryCheck = asyncHandler(async (req, res) => {
   }
 });
 
+// @desc    Create a test notification (for testing WebSocket)
+// @route   POST /api/notifications/test
+// @access  Private
+const createTestNotification = asyncHandler(async (req, res) => {
+  try {
+    const { title, message, type = "LOW_STOCK", priority = "MEDIUM" } = req.body;
+    
+    // Get user's facility - assume they have one for testing
+    const user = await User.findById(req.user._id).populate('facility');
+    if (!user || !user.facility) {
+      res.status(400);
+      throw new Error("User must be associated with a facility");
+    }
+
+    // Create a test notification
+    const notification = new Notification({
+      type,
+      title: title || "Test Notification",
+      message: message || "This is a test notification",
+      // We'll create without a specific drug for testing - use a dummy ObjectId
+      drugId: new mongoose.Types.ObjectId(),
+      drugName: "Test Drug",
+      batchNumber: "TEST-001",
+      facility: user.facility._id,
+      userId: req.user._id,
+      priority,
+      metadata: {
+        test: true,
+        createdBy: req.user._id
+      },
+    });
+
+    await notification.save();
+    
+    // Populate the notification for real-time emission
+    const populatedNotification = await Notification.findById(notification._id)
+      .populate("facility", "name location")
+      .populate("userId", "name email");
+
+    // Emit real-time notification to facility
+    emitNotificationToFacility(user.facility._id, populatedNotification);
+
+    // Emit to the specific user as well
+    emitNotificationToUser(req.user._id, populatedNotification);
+
+    res.status(201).json({
+      message: "Test notification created successfully",
+      notification: populatedNotification
+    });
+  } catch (error) {
+    res.status(500);
+    throw new Error("Error creating test notification");
+  }
+});
+
 export {
   getNotifications,
   markAsRead,
@@ -219,4 +291,5 @@ export {
   getNotificationCount,
   createExpiryNotification,
   manualExpiryCheck,
+  createTestNotification,
 };

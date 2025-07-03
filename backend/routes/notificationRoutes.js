@@ -6,6 +6,7 @@ import {
   deleteNotification,
   getNotificationCount,
   manualExpiryCheck,
+  createTestNotification,
 } from "../controllers/notificationController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
@@ -18,6 +19,7 @@ router.route("/").get(getNotifications);
 router.route("/count").get(getNotificationCount);
 router.route("/mark-all-read").put(markAllAsRead);
 router.route("/trigger-expiry-check").post(manualExpiryCheck);
+router.route("/test").post(createTestNotification);
 router.route("/:id/read").put(markAsRead);
 router.route("/:id").delete(deleteNotification);
 
