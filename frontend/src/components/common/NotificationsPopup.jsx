@@ -255,31 +255,9 @@ const NotificationsPopup = () => {
                             )}
                             
                             {notification.batchNumber && (
-                              <div className="flex items-center gap-1">
-                                <span className="text-xs text-gray-500 truncate">
-                                  Batch: {notification.batchNumber}
-                                </span>
-                                
-                                {/* Delete button - positioned after batch name */}
-                                <button
-                                  onClick={(e) => handleDeleteNotification(notification._id, e)}
-                                  className="opacity-0 group-hover:opacity-100 p-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-all flex-shrink-0 ml-1"
-                                  title="Delete notification"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              </div>
-                            )}
-                            
-                            {/* Delete button for notifications without batch number */}
-                            {!notification.batchNumber && (
-                              <button
-                                onClick={(e) => handleDeleteNotification(notification._id, e)}
-                                className="opacity-0 group-hover:opacity-100 p-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-all flex-shrink-0 ml-1"
-                                title="Delete notification"
-                              >
-                                <Trash2 size={12} />
-                              </button>
+                              <span className="text-xs text-gray-500 truncate">
+                                Batch: {notification.batchNumber}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -294,6 +272,15 @@ const NotificationsPopup = () => {
                               {notification.facility.name}
                             </span>
                           )}
+                          
+                          {/* Delete button - positioned at the very end of notification box */}
+                          <button
+                            onClick={(e) => handleDeleteNotification(notification._id, e)}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-all flex-shrink-0 cursor-pointer mt-8"
+                            title="Delete notification"
+                          >
+                            <Trash2 size={12} />
+                          </button>
                         </div>
                       </div>
                     </div>
