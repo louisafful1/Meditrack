@@ -12,11 +12,7 @@ export const getDashboardSummary = asyncHandler(async (req, res) => {
     const facilityId = req.user.facility; 
 
     // 1. Total Drugs
-    const totalDrugs = await Inventory.aggregate([
-        { $match: { facility: facilityId } },
-        { $group: { _id: null, total: { $sum: "$currentStock" } } }
-    ]);
-    const totalDrugsCount = totalDrugs.length > 0 ? totalDrugs[0].total : 0;
+    const totalDrugsCount = await Inventory.countDocuments({ facility: facilityId });
 
     // 2. Low Stocks (status: "Low Stock" or "Out of stock")
     const lowStocks = await Inventory.countDocuments({
