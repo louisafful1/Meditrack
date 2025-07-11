@@ -18,11 +18,6 @@ const protect = asyncHandler(async (req, res, next) => {
       throw new Error("User not found");
     }
 
-    if (!user.active) {
-      res.status(403);
-      throw new Error("Account is inactive. Contact admin.");
-    }
-
     req.user = user;
     next();
   } catch (error) {
@@ -33,7 +28,7 @@ const protect = asyncHandler(async (req, res, next) => {
 
 
 const adminOnly = asyncHandler(async (req, res, next) => {
-  if (req.user?.role === "admin" && req.user?.active) {
+  if (req.user?.role === "admin") {
     next();
   } else {
     res.status(403);
@@ -41,13 +36,24 @@ const adminOnly = asyncHandler(async (req, res, next) => {
   }
 });
 
-const supervisorOnly = asyncHandler(async (req, res, next) => {
-  if (req.user?.role === "supervisor" && req.user?.active) {
-    next();
+
+const authorizeRoles = (allowedRoles) => asyncHandler(async (req, res, next) => {
+  if (!req.user) {
+    res.status(401); 
+    throw new Error("Not authorized, user information missing.");
+  }
+
+  // Check if the authenticated user's role is included in the allowedRoles array
+  if (allowedRoles.includes(req.user.role)) {
+    next(); 
   } else {
-    res.status(403);
-    throw new Error("Access Denied - Supervisors only");
+    res.status(403); // Forbidden
+    throw new Error(`Access Denied - Role (${req.user.role}) is not authorized to access this resource.`);
   }
 });
 
-export { protect, adminOnly, supervisorOnly }
+export {
+  protect,
+  adminOnly,
+  authorizeRoles, 
+};

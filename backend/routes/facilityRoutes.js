@@ -6,18 +6,18 @@ import {
   updateFacility,
   deleteFacility,
 } from "../controllers/facilityController.js";
-import { protect } from "../middleware/authMiddleware.js";
+import { adminOnly, authorizeRoles, protect } from "../middleware/authMiddleware.js";
 
 const facilityRoutes = express.Router();
 
 
 facilityRoutes.route("/")
-  .post(createFacility)     
-  .get(protect, getFacilities);      
+  .post(createFacility, protect, adminOnly,)     
+  .get(protect, authorizeRoles(['admin', 'supervisor', 'pharmacist']), getFacilities);      
 
 facilityRoutes.route("/:id")
-  .get(protect, getFacilityById)     
-  .put(protect, updateFacility)      
-  .delete(protect, deleteFacility);  
+  .get(protect, adminOnly, getFacilityById)     
+  .put(protect, adminOnly, updateFacility)      
+  .delete(protect, adminOnly, deleteFacility);  
 
 export default facilityRoutes;
