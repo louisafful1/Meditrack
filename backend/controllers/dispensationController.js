@@ -30,6 +30,14 @@ export const dispenseDrug = asyncHandler(async (req, res) => {
 
   // Reduce stock
   inventoryItem.currentStock -= quantityDispensed;
+
+    if (inventoryItem.currentStock === 0) {
+    inventoryItem.status = "Sut of Stock";
+  } else if (inventoryItem.currentStock <= inventoryItem.reorderLevel) {
+    inventoryItem.status = "Low Stock";
+  } else {
+    inventoryItem.status = "Adequate";
+  }
   await inventoryItem.save();
 
   // Check for stock level notifications after dispensing

@@ -28,9 +28,14 @@ const inventorySchema = new mongoose.Schema(
       type: Date,
       required: [true, "Received date is required"],
     },
+    reorderLevel: {
+      type: Number,
+      required: true,
+      default: 10, 
+    },
     status: {
       type: String,
-      enum: ["Adequate", "Low Stock", "Out of stock"],
+      enum: ["Adequate", "Low Stock", "Out of Stock"],
       default: "Adequate",
     },
     location: {

@@ -206,7 +206,6 @@ const createExpiryNotification = async (inventoryItem, daysToExpiry) => {
       emitNotificationToUser(populatedNotification.userId, populatedNotification);
     }
 
-    console.log(`Expiry notification created for ${inventoryItem.drugName}`);
   } catch (error) {
     console.error("Error creating expiry notification:", error);
   }

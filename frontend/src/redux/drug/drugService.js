@@ -6,9 +6,11 @@ export const API_URL = `${BACKEND_URL}/api/`
 /**** IN REFERENCE TO INVENTORY CONTROLLER/ROUTE ***/
 // create Drug
 const createDrug = async(drugData) => {
-        const response = await axios.post(API_URL + "inventory", drugData);
-        return response.data;
+    const response = await axios.post(API_URL + "inventory", drugData);
+    return response.data;
 }
+
+
 
 // Get Drugs
 const getAllDrugs = async() => {
@@ -22,12 +24,18 @@ const deleteDrug = async(drugId) => {
     return response.data;
 }
 
+// Update Drug
+const updateDrug = async(id, drugData) => {
+    const response = await axios.put(`${API_URL}inventory/${id}`, drugData);
+    return response.data;
+}
+
 /**** IN REFERENCE TO DISPENSE CONTROLLER/ROUTE ***/
 
 // Dispense Drug
 const dispenseDrug = async(drugData) => {
-        const response = await axios.post(API_URL + "dispensation", drugData);
-        return response.data;
+    const response = await axios.post(API_URL + "dispensation", drugData);
+    return response.data;
 }
 
 // Get Dispensed Drugs
@@ -41,6 +49,7 @@ const drugService = {
     createDrug,
     getAllDrugs,
     deleteDrug,
+    updateDrug,
     dispenseDrug,
     getDispensations
 }
