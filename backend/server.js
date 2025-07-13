@@ -15,11 +15,10 @@ import activityLogRoutes from './routes/activityLogRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import { setupDailySnapshotCrons } from './cron/snapshotJob.js';
 import { setupExpiryNotificationCron } from './cron/expiryNotificationCron.js';
-import aiSnapshotRoutes from './routes/aiRoutes/aiSnapshotRoutes.js';
-import aiRoutes from './routes/aiRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 import redisClient from './config/redisClient.js';
+import aiRoutes from './routes/aiRoutes.js';
 
 dotenv.config();
 const port = process.env.PORT || 5000;
@@ -55,12 +54,7 @@ const io = initializeSocket(server);
  app.use('/api/reports', reportRoutes);
 
 //  ai routes
- app.use('/api/ai', aiSnapshotRoutes);
  app.use('/api/ai', aiRoutes);
-
-
-
-
 
 app.use(notFound);
 app.use(errorHandler);

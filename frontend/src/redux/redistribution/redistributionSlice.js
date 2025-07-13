@@ -97,17 +97,39 @@ export const updateRedistributionStatus = createAsyncThunk(
 );
 
 // Async Thunk for getting redistribution suggestions
-export const getRedistributionSuggestions = createAsyncThunk(
+export const getAIRedistributionSuggestions = createAsyncThunk(
     "redistribution/getSuggestions",
     async (_, thunkAPI) => {
         try {
-            return await redistributionService.getRedistributionSuggestions();
+            return await redistributionService.getAIRedistributionSuggestions();
         } catch (error) {
             const message =
                 (error.response && error.response.data && error.response.data.message) ||
                 error.message ||
                 error.toString();
             toast.error(message);
+            return thunkAPI.rejectWithValue(message);
+        }
+    }
+);
+
+// --- New Thunk for AI Redistribution Suggestions ---
+export const getAISuggestions = createAsyncThunk(
+    'redistribution/getSuggestions',
+    async (_, thunkAPI) => {
+        try {
+            // Call the new service function to fetch AI suggestions
+            const response = await redistributionService.getAISuggestions();
+            toast.success('AI suggestions loaded!');
+            return response;
+        } catch (error) {
+            const message =
+                (error.response &&
+                    error.response.data &&
+                    error.response.data.message) ||
+                error.message ||
+                error.toString();
+            toast.error(`Failed to load AI suggestions: ${message}`);
             return thunkAPI.rejectWithValue(message);
         }
     }
@@ -232,21 +254,20 @@ const redistributionSlice = createSlice({
                 state.message = action.payload;
             })
 
-            // Get Redistribution Suggestions
-            .addCase(getRedistributionSuggestions.pending, (state) => {
+            // Get AI Suggestions
+            .addCase(getAIRedistributionSuggestions.pending, (state) => {
                 state.isLoading = true;
             })
-            .addCase(getRedistributionSuggestions.fulfilled, (state, action) => {
+            .addCase(getAIRedistributionSuggestions.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                state.suggestions = action.payload;
-                state.message = "Redistribution suggestions fetched successfully!";
+                state.suggestions = action.payload; 
             })
-            .addCase(getRedistributionSuggestions.rejected, (state, action) => {
+            .addCase(getAIRedistributionSuggestions.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;
-                state.suggestions = [];
+                state.suggestions = []; 
             });
     },
 });

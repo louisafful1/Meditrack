@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'; 
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     PlusCircle,
@@ -10,7 +10,7 @@ import {
     Truck,
     Lightbulb,
     Loader2, 
-    FileText
+    FileText 
 } from 'lucide-react';
 import Header from '../components/common/Header';
 import { toast } from 'react-toastify';
@@ -22,34 +22,12 @@ import {
     getRedistributions,
     approveRedistribution,
     declineRedistribution,
-    getRedistributionSuggestions, 
+    getAIRedistributionSuggestions, 
     RESET_REDISTRIBUTION,
-} from '../redux/redistribution/redistributionSlice'; 
-import { getAllDrugs, RESET_DRUG } from '../redux/drug/drugSlice'; 
+} from '../redux/redistribution/redistributionSlice';
+import { getAllDrugs, RESET_DRUG } from '../redux/drug/drugSlice';
 import { getAllFacilities, RESET_FACILITIES } from '../redux/facility/facilitySlice';
 
-const mockAISuggestions = [
-    {
-        drugName: "Amoxicillin 500mg",
-        batchNumber: "AMX789",
-        quantity: 15,
-        fromFacility: { id: "facB", name: "Central Hospital Pharmacy" },
-        toFacility: { id: "facA", name: "Local Clinic Dispensary" },
-        reason: "Stock imbalance detected",
-        expiryDate: "2025-08-30",
-        daysToExpiry: 60,
-    },
-    {
-        drugName: "Paracetamol 500mg",
-        batchNumber: "PAR123",
-        quantity: 20,
-        fromFacility: { id: "facC", name: "Regional Medical Center" },
-        toFacility: { id: "facA", name: "Local Clinic Dispensary" },
-        reason: "Stock expiring soon, and receiving facility has low supply",
-        expiryDate: "2025-07-10",
-        daysToExpiry: 7,
-    },
-];
 
 // --- Helper Functions ---
 const getStatusColor = (status) => {
@@ -66,18 +44,18 @@ const getStatusIcon = (status) => {
         case 'pending': return <Clock className="h-4 w-4" />;
         case 'completed': return <CheckCircle className="h-4 w-4" />;
         case 'declined': return <XCircle className="h-4 w-4" />;
-        default: return <FileText className="h-4 w-4" />;
+        default: return <FileText className="h-4 w-4" />; 
     }
 };
 
 const RedistributionPage = () => {
     const dispatch = useDispatch();
-    const formRef = useRef(null); // Ref for the form section
+    const formRef = useRef(null); 
 
     // Selectors for Redistribution data
     const {
         redistributions,
-        suggestions, // Get AI suggestions from Redux
+        suggestions, 
         isLoading: redistLoading,
         isError: redistError,
         message: redistMessage,
@@ -110,13 +88,14 @@ const RedistributionPage = () => {
 
     // State for filtering logs
     const [filterStatus, setFilterStatus] = useState('all');
-    const [filterType, setFilterType] = useState('all'); // 'all', 'sent', 'received'
+    const [filterType, setFilterType] = useState('all'); 
 
     // Fetch initial data on component mount
     useEffect(() => {
         dispatch(getRedistributions());
         dispatch(getAllDrugs());
         dispatch(getAllFacilities());
+        dispatch(getAIRedistributionSuggestions()); 
 
         // Cleanup
         return () => {
@@ -128,7 +107,7 @@ const RedistributionPage = () => {
 
     // Function to fetch AI suggestions
     const handleGetSuggestions = () => {
-        dispatch(getRedistributionSuggestions());
+        dispatch(getAIRedistributionSuggestions());
     };
 
     // Handle form submission for creating a redistribution request
@@ -167,69 +146,53 @@ const RedistributionPage = () => {
             setReason('');
             dispatch(getRedistributions()); // Re-fetch all redistributions
             dispatch(getAllDrugs()); // Re-fetch inventory drugs to update stock levels
+            dispatch(getAIRedistributionSuggestions()); // Re-fetch AI suggestions as inventory changes might affect them
         }
     };
 
     // Handle approve/decline actions
     const handleApprove = async (id) => {
-        // TODO: Implement custom confirmation modal instead of window.confirm
-        // Example:
-        // const confirmed = await showConfirmationModal("Are you sure you want to APPROVE this redistribution request? This action will update inventory.");
-        // if (confirmed) { ... }
         if (window.confirm("Are you sure you want to APPROVE this redistribution request? This action will update inventory.")) {
             const resultAction = await dispatch(approveRedistribution(id));
             if (approveRedistribution.fulfilled.match(resultAction)) {
                 dispatch(getRedistributions());
                 dispatch(getAllDrugs());
+                dispatch(getAIRedistributionSuggestions());
             }
         }
     };
 
     const handleDecline = async (id) => {
-        // TODO: Implement custom confirmation modal instead of window.confirm
-        // Example:
-        // const confirmed = await showConfirmationModal("Are you sure you want to DECLINE this redistribution request?");
-        // if (confirmed) { ... }
         if (window.confirm("Are you sure you want to DECLINE this redistribution request?")) {
             const resultAction = await dispatch(declineRedistribution(id));
             if (declineRedistribution.fulfilled.match(resultAction)) {
                 dispatch(getRedistributions());
+                dispatch(getAIRedistributionSuggestions()); // Re-fetch AI suggestions
             }
         }
     };
 
     // Autofill form from AI suggestion
     const handleInitiateTransfer = (suggestion) => {
-        // Find the actual drug ID from inventoryDrugs based on drugName (and potentially batchNumber)
-        // Note: This assumes drugName + batchNumber is unique enough to find the drug.
-        // If not, you might need more specific identifiers or a more robust search.
-        const drugToSelect = inventoryDrugs.find(
-            d => d.drugName === suggestion.drugName && d.batchNumber === suggestion.batchNumber
-        );
-        // Find the actual facility ID from facilities based on name
-        const facilityToSelect = facilities.find(
-            f => f.name === suggestion.toFacility.name
-        );
+        const drugToSelect = inventoryDrugs.find(d => d._id === suggestion.drugId);
+        const facilityToSelect = facilities.find(f => f._id === suggestion.toFacilityId);
 
         if (drugToSelect) {
             setSelectedDrug(drugToSelect._id);
         } else {
-            toast.warn(`Drug "${suggestion.drugName}" not found in your inventory. Cannot autofill drug.`);
+            toast.warn(`Drug "${suggestion.drugName}" (ID: ${suggestion.drugId}) not found in your inventory. Cannot autofill drug.`);
             setSelectedDrug('');
         }
 
-        setQuantity(suggestion.quantity);
-
+        setQuantity(suggestion.suggestedQuantity);
         if (facilityToSelect) {
             setToFacility(facilityToSelect._id);
         } else {
-            toast.warn(`Facility "${suggestion.toFacility.name}" not found. Cannot autofill facility.`);
+            toast.warn(`Facility "${suggestion.toFacilityName}" (ID: ${suggestion.toFacilityId}) not found. Cannot autofill facility.`);
             setToFacility('');
         }
-
         setReason(suggestion.reason);
 
-        // Scroll to the form
         formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
@@ -297,13 +260,13 @@ const RedistributionPage = () => {
                                         <div>
                                             <p className="text-gray-200 font-medium">{suggestion.drugName} ({suggestion.batchNumber || 'N/A'})</p>
                                             <p className="text-sm text-gray-300">
-                                                Transfer <span className="font-semibold text-emerald-300">{suggestion.quantity}</span> units
-                                                from <span className="font-semibold text-yellow-300">{suggestion.fromFacility?.name || 'N/A'}</span>
-                                                to <span className="font-semibold text-blue-300">{suggestion.toFacility?.name || 'N/A'}</span>.
+                                                Transfer <span className="font-semibold text-emerald-300">{suggestion.suggestedQuantity}</span> units
+                                                from <span className="font-semibold text-yellow-300">{suggestion.fromFacilityName || 'N/A'}</span>
+                                                to <span className="font-semibold text-blue-300">{suggestion.toFacilityName || 'N/A'}</span>.
                                             </p>
                                             <p className="text-xs text-gray-400 mt-1">
                                                 Reason: {suggestion.reason}
-                                                {suggestion.daysToExpiry && ` (Expires in ${suggestion.daysToExpiry} days)`}
+                                                {suggestion.daysUntilExpiry && ` (Expires in ${suggestion.daysUntilExpiry} days)`}
                                             </p>
                                             <button
                                                 onClick={() => handleInitiateTransfer(suggestion)}
@@ -486,69 +449,58 @@ const RedistributionPage = () => {
                                 <tbody>
                                     <AnimatePresence>
                                         {filteredRedistributions.length > 0 ? (
-                                            filteredRedistributions.map((request) => {
-                                                // DEBUGGING: Log facility IDs for approve/decline buttons
-                                                console.log(`--- Request ID: ${request._id} ---`);
-                                                console.log(`Request Status: ${request.status}`);
-                                                console.log(`Request To Facility ID: ${request.toFacility?._id}`);
-                                                console.log(`User Facility ID: ${user?.facility}`);
-                                                console.log(`Condition for Approve/Decline: ${request.status === 'pending' && user && request.toFacility?._id === user.facility}`);
-                                                console.log(`Condition for Awaiting Approval: ${request.status === 'pending' && user && request.fromFacility?._id === user.facility}`);
-                                                console.log('--- End Request Log ---');
-
-                                                return (
-                                                    <motion.tr
-                                                        key={request._id}
-                                                        initial={{ opacity: 0, y: 10 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        exit={{ opacity: 0 }}
-                                                        transition={{ duration: 0.2 }}
-                                                        className="hover:bg-gray-700 border-b border-gray-700 last:border-b-0"
-                                                    >
-                                                        <td className="py-2 px-3 flex items-center gap-2">
-                                                            <Package size={16} className="text-blue-400" />
-                                                            {request.drug?.drugName || 'N/A'}
-                                                        </td>
-                                                        <td className="py-2 px-3">{request.quantity}</td>
-                                                        <td className="py-2 px-3">{request.fromFacility?.name || 'N/A'}
-                                                        </td>
-                                                        <td className="py-2 px-3">{request.toFacility?.name || 'N/A'}
-                                                        </td>
-                                                        <td className="py-2 px-3">{request.reason}</td>
-                                                        <td className="py-2 px-3">
-                                                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
-                                                                {getStatusIcon(request.status)} {request.status}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-2 px-3">{new Date(request.createdAt).toLocaleString()}</td>
-                                                        <td className="py-2 px-3">
-                                                            {request.status === 'pending' && user && request.toFacility?._id === user.facility && (
-                                                                <div className="flex gap-2">
-                                                                    <button
-                                                                        onClick={() => handleApprove(request._id)}
-                                                                        className="p-1 rounded-full bg-green-600 text-white hover:bg-green-700 transition-colors"
-                                                                        title="Approve Request"
-                                                                        disabled={redistLoading}
-                                                                    >
-                                                                        <CheckCircle size={18} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleDecline(request._id)}
-                                                                        className="p-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors"
-                                                                        title="Decline Request"
-                                                                        disabled={redistLoading}
-                                                                    >
-                                                                        <XCircle size={18} />
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                            {request.status === 'pending' && user && request.fromFacility?._id === user.facility && (
-                                                                <span className="text-gray-500 italic text-xs">Awaiting Approval</span>
-                                                            )}
-                                                        </td>
-                                                    </motion.tr>
-                                                );
-                                            })
+                                            filteredRedistributions.map((request) => (
+                                                <motion.tr
+                                                    key={request._id}
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    exit={{ opacity: 0 }}
+                                                    transition={{ duration: 0.2 }}
+                                                    className="hover:bg-gray-700 border-b border-gray-700 last:border-b-0"
+                                                >
+                                                    <td className="py-2 px-3 flex items-center gap-2">
+                                                        <Package size={16} className="text-blue-400" />
+                                                        {request.drug?.drugName || 'N/A'} {/* Added optional chaining */}
+                                                    </td>
+                                                    <td className="py-2 px-3">{request.quantity}</td>
+                                                    <td className="py-2 px-3">{request.fromFacility?.name || 'N/A'} {/* Added optional chaining */}
+                                                    </td>
+                                                    <td className="py-2 px-3">{request.toFacility?.name || 'N/A'} {/* Added optional chaining */}
+                                                    </td>
+                                                    <td className="py-2 px-3">{request.reason}</td>
+                                                    <td className="py-2 px-3">
+                                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
+                                                            {getStatusIcon(request.status)} {request.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2 px-3">{new Date(request.createdAt).toLocaleString()}</td>
+                                                    <td className="py-2 px-3">
+                                                        {request.status === 'pending' && user && request.toFacility?._id === user.facility && ( // Added optional chaining
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => handleApprove(request._id)}
+                                                                    className="p-1 rounded-full bg-green-600 text-white hover:bg-green-700 transition-colors"
+                                                                    title="Approve Request"
+                                                                    disabled={redistLoading}
+                                                                >
+                                                                    <CheckCircle size={18} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDecline(request._id)}
+                                                                    className="p-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                                                    title="Decline Request"
+                                                                    disabled={redistLoading}
+                                                                >
+                                                                    <XCircle size={18} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        {request.status === 'pending' && user && request.fromFacility?._id === user.facility && ( // Added optional chaining
+                                                            <span className="text-gray-500 italic text-xs">Awaiting Approval</span>
+                                                        )}
+                                                    </td>
+                                                </motion.tr>
+                                            ))
                                         ) : (
                                             <tr>
                                                 <td colSpan="8" className="text-center py-6 text-gray-400">
