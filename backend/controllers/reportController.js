@@ -2,8 +2,22 @@ import asyncHandler from 'express-async-handler';
 import Inventory from '../models/inventoryModel.js';
 import Dispensation from '../models/dispensationModel.js';
 import Redistribution from '../models/redistributionModel.js';
-import Facility from '../models/facilityModel.js'; 
+import Facility from '../models/facilityModel.js';
 import mongoose from 'mongoose';
+import { setCache, getCache } from '../utils/cache.js'; // Import Redis cache utilities
+
+// Helper to generate a unique cache key for each report type and user/facility
+const generateReportCacheKey = (reportType, userId, facilityId, dateRange) => {
+  // Ensure facilityId is a simple string.
+  // If facilityId is a populated Mongoose object, access its _id property.
+  // If it's already an ObjectId or string, toString() will work as expected.
+  const facilityIdString = facilityId
+    ? (facilityId._id ? facilityId._id.toString() : facilityId.toString())
+    : 'no-facility';
+  const startDate = dateRange?.startDate || 'no-start';
+  const endDate = dateRange?.endDate || 'no-end';
+  return `report:${reportType}:${userId}:${facilityIdString}:${startDate}:${endDate}`;
+};
 
 // Helper to format date strings
 const formatDate = (date) => {
@@ -21,7 +35,17 @@ const formatDate = (date) => {
 export const getReports = asyncHandler(async (req, res) => {
     const { reportType } = req.params;
     const { startDate, endDate } = req.query; // Date range from frontend
-    const facilityId = req.user.facility; // Get facility ID from authenticated user
+    const userId = req.user._id; // Get user ID from authenticated user
+    const facilityId = req.user.facility; // Get facility ID from authenticated user (likely an ObjectId or populated object)
+
+    // Generate a unique cache key for this specific report request
+    const cacheKey = generateReportCacheKey(reportType, userId, facilityId, { startDate, endDate });
+
+    // 1. Try to get data from Redis cache first
+    const cachedData = await getCache(cacheKey);
+    if (cachedData) {
+        return res.status(200).json(cachedData);
+    }
 
     let query = { facility: new mongoose.Types.ObjectId(facilityId) };
 
@@ -136,6 +160,9 @@ export const getReports = asyncHandler(async (req, res) => {
             res.status(400);
             throw new Error('Invalid report type specified');
     }
+
+    // 2. Cache the fetched data before sending the response
+    await setCache(cacheKey, data);
 
     res.json(data);
 });

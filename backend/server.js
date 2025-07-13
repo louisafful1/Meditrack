@@ -19,7 +19,7 @@ import aiSnapshotRoutes from './routes/aiRoutes/aiSnapshotRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
-// import redisClient from './config/redisClient.js';
+import redisClient from './config/redisClient.js';
 
 dotenv.config();
 const port = process.env.PORT || 5000;
@@ -31,8 +31,6 @@ const server = createServer(app);
 
 // Initialize Socket.IO
 const io = initializeSocket(server);
-
-//  await redisClient.connect()
 
  //Cross-Origin Resource Sharing
  app.use(cors({

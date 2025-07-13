@@ -72,12 +72,12 @@ export default function UsersManagement() {
     );
 
     // Fetch users on component mount
-    useEffect(() => {
-        dispatch(getUsers());
-        return () => {
-            dispatch(RESET_AUTH());
-        };
-    }, [dispatch]);
+    // useEffect(() => {
+    //     dispatch(getUsers());
+    //     return () => {
+    //         dispatch(RESET_AUTH());
+    //     };
+    // }, [dispatch]);
 
     useEffect(() => {
         if (isError && message) {
