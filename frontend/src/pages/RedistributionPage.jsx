@@ -78,10 +78,10 @@ const RedistributionPage = () => {
         message: facilitiesMessage,
     } = useSelector((state) => state.facility);
 
-    const { user } = useSelector((state) => state.auth); 
+    const { user } = useSelector((state) => state.auth);
 
     // --- DEBUGGING LOGS (CRITICAL FOR DIAGNOSIS) ---
-    console.group("RedistributionPage Debugging");
+    console.group("RedistributionPage Debugging - Initial State");
     console.log("1. Frontend - User object from Redux:", user);
     if (user) {
         console.log("2. Frontend - User facility ID (user.facility):", user.facility);
@@ -95,14 +95,15 @@ const RedistributionPage = () => {
     console.log("7. Frontend - AI Suggestions array:", suggestions);
     console.log("8. Frontend - Redistribution/AI Loading state:", redistLoading);
     console.log("9. Frontend - Redistribution/AI Error state:", redistError);
+    console.log("10. Frontend - Raw Redistrbutions array from Redux (before filter):", redistributions);
     console.groupEnd();
     // --- END DEBUGGING LOGS ---
 
 
     // Form states
-    const [selectedDrug, setSelectedDrug] = useState(''); 
+    const [selectedDrug, setSelectedDrug] = useState('');
     const [quantity, setQuantity] = useState('');
-    const [toFacility, setToFacility] = useState(''); 
+    const [toFacility, setToFacility] = useState('');
     const [reason, setReason] = useState('');
 
     // State for filtering logs
@@ -128,7 +129,7 @@ const RedistributionPage = () => {
         if (redistError) {
             toast.error(redistMessage);
         }
-        if (redistSuccess && redistMessage) { 
+        if (redistSuccess && redistMessage) {
             toast.success(redistMessage);
         }
         // Handle drug and facility errors as well
@@ -143,7 +144,6 @@ const RedistributionPage = () => {
 
     // Function to fetch AI suggestions
     const handleGetSuggestions = () => {
-        // Only dispatch if not already loading to prevent multiple concurrent calls from frontend
         if (!redistLoading) {
             dispatch(getAIRedistributionSuggestions());
         } else {
@@ -166,7 +166,6 @@ const RedistributionPage = () => {
             return;
         }
 
-        // Ensure user's facility is not the target facility
         if (user && toFacility === user.facility) {
             toast.error('Cannot redistribute drugs to your own facility.');
             return;
@@ -186,23 +185,18 @@ const RedistributionPage = () => {
             setQuantity('');
             setToFacility('');
             setReason('');
-            dispatch(getRedistributions()); // Re-fetch all redistributions
-            dispatch(getAllDrugs()); // Re-fetch inventory drugs to update stock levels
-            // No need to re-fetch AI suggestions immediately here, as they are on button click
+            dispatch(getRedistributions());
+            dispatch(getAllDrugs());
         }
     };
 
     // Handle approve/decline actions
     const handleApprove = async (id) => {
-        // Use a custom modal or confirmation component instead of window.confirm
-        // For now, keeping window.confirm for simplicity as per previous instructions,
-        // but note that it's not ideal for production UIs.
         if (window.confirm("Are you sure you want to APPROVE this redistribution request? This action will update inventory.")) {
             const resultAction = await dispatch(approveRedistribution(id));
             if (approveRedistribution.fulfilled.match(resultAction)) {
                 dispatch(getRedistributions());
                 dispatch(getAllDrugs());
-                // No need to re-fetch AI suggestions immediately here
             }
         }
     };
@@ -243,19 +237,47 @@ const RedistributionPage = () => {
 
     // Filter redistribution logs based on status and type (sent/received)
     const filteredRedistributions = redistributions.filter(request => {
-        const matchesStatus = filterStatus === 'all' || request.status === filterStatus;
-        let matchesType = true;
+        console.groupCollapsed(`DEBUG FILTER: Evaluating Request ID: ${request._id}`); // Collapsed for readability
+        console.log("Request object:", request);
+        console.log("Current user:", user);
+        console.log("User facility ID:", user?.facility);
+        console.log("Filter Status:", filterStatus);
+        console.log("Filter Type:", filterType);
 
-        if (filterType === 'sent' && user) {
-            // Ensure request.fromFacility is populated and compare its _id
-            matchesType = request.fromFacility && request.fromFacility._id === user.facility;
-        } else if (filterType === 'received' && user) {
-            // Ensure request.toFacility is populated and compare its _id
-            matchesType = request.toFacility && request.toFacility._id === user.facility;
+        const matchesStatus = filterStatus === 'all' || request.status === filterStatus;
+        console.log(`Matches Status (${filterStatus} === ${request.status}):`, matchesStatus);
+
+        let matchesType = true; // Default to true if no user or no specific type filter
+
+        if (user) { // Only apply type filter if user is available
+            if (filterType === 'sent') {
+                const fromFacilityId = request.fromFacility && typeof request.fromFacility === 'object' ? request.fromFacility._id : request.fromFacility;
+                matchesType = fromFacilityId === user.facility;
+                console.log(`Matches Type (Sent by Me): Request fromFacility ID (${fromFacilityId}) === User facility ID (${user.facility}) ->`, matchesType);
+            } else if (filterType === 'received') {
+                const toFacilityId = request.toFacility && typeof request.toFacility === 'object' ? request.toFacility._id : request.toFacility;
+                matchesType = toFacilityId === user.facility;
+                console.log(`Matches Type (Received by Me): Request toFacility ID (${toFacilityId}) === User facility ID (${user.facility}) ->`, matchesType);
+            } else {
+                // If filterType is 'all', show requests where either fromFacility or toFacility matches user's facility
+                const fromFacilityId = request.fromFacility && typeof request.fromFacility === 'object' ? request.fromFacility._id : request.fromFacility;
+                const toFacilityId = request.toFacility && typeof request.toFacility === 'object' ? request.toFacility._id : request.toFacility;
+                matchesType = (fromFacilityId === user.facility || toFacilityId === user.facility);
+                console.log(`Matches Type (All Requests for User): (from ${fromFacilityId} === ${user.facility} || to ${toFacilityId} === ${user.facility}) ->`, matchesType);
+            }
+        } else {
+            console.log("User object not available, skipping type filter.");
         }
 
-        return matchesStatus && matchesType;
+        const finalResult = matchesStatus && matchesType;
+        console.log("Final Filter Result for this request:", finalResult);
+        console.groupEnd();
+        return finalResult;
     });
+
+    console.log("DEBUG FILTER: Final filteredRedistributions array length:", filteredRedistributions.length);
+    console.log("DEBUG FILTER: Final filteredRedistributions array content:", filteredRedistributions);
+
 
     // Determine if overall loading state is active for any relevant data
     const overallLoading = redistLoading || drugsLoading || facilitiesLoading;
@@ -282,7 +304,7 @@ const RedistributionPage = () => {
                     <button
                         onClick={handleGetSuggestions}
                         className="mb-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-md flex items-center gap-2 transition-colors duration-200"
-                        disabled={redistLoading} 
+                        disabled={redistLoading}
                     >
                         {redistLoading && suggestions.length === 0 ? <Loader2 className="animate-spin h-5 w-5" /> : <Lightbulb size={20} />}
                         {redistLoading && suggestions.length === 0 ? 'Getting Suggestions...' : 'Get AI Suggestions'}
@@ -293,13 +315,13 @@ const RedistributionPage = () => {
                             <Loader2 className="animate-spin text-emerald-400" size={24} />
                             <span className="ml-3 text-lg text-gray-300">Loading AI suggestions...</span>
                         </div>
-                    ) : redistError && suggestions.length === 0 ? ( 
+                    ) : redistError && suggestions.length === 0 ? (
                         <div className="text-center py-4 text-red-400">
                             Error loading AI suggestions: {redistMessage}
                         </div>
                     ) : (
                         <ul className="space-y-4">
-                            {suggestions.length > 0 ? ( 
+                            {suggestions.length > 0 ? (
                                 suggestions.map((suggestion, index) => (
                                     <li key={index} className="bg-gray-700 p-4 rounded-lg flex items-start gap-4">
                                         <Truck className="h-6 w-6 text-emerald-400 flex-shrink-0" />
@@ -365,7 +387,7 @@ const RedistributionPage = () => {
                                             .filter(drug => {
                                                 // Ensure user and user.facility exist
                                                 if (!user || !user.facility) {
-                                                    console.log(`DEBUG FILTER: Skipping drug ${drug.drugName} - User or user.facility is missing.`);
+                                                    // console.log(`DEBUG FILTER (Drug Select): Skipping drug ${drug.drugName} - User or user.facility is missing.`);
                                                     return false;
                                                 }
                                                 // Get the facility ID from the drug object (handles populated object or string ID)
@@ -374,12 +396,12 @@ const RedistributionPage = () => {
                                                 const isFromUserFacility = drugFacilityId === user.facility;
                                                 const hasStock = drug.currentStock > 0;
 
-                                                console.log(`DEBUG FILTER: Drug: ${drug.drugName} (ID: ${drug._id})`);
-                                                console.log(`  - drug.facility:`, drug.facility, `(Resolved ID: ${drugFacilityId})`);
-                                                console.log(`  - user.facility:`, user.facility);
-                                                console.log(`  - isFromUserFacility (${drugFacilityId} === ${user.facility}):`, isFromUserFacility);
-                                                console.log(`  - hasStock (${drug.currentStock} > 0):`, hasStock);
-                                                console.log(`  - Final Filter Result:`, isFromUserFacility && hasStock);
+                                                // console.log(`DEBUG FILTER (Drug Select): Drug: ${drug.drugName} (ID: ${drug._id})`);
+                                                // console.log(`  - drug.facility:`, drug.facility, `(Resolved ID: ${drugFacilityId})`);
+                                                // console.log(`  - user.facility:`, user.facility);
+                                                // console.log(`  - isFromUserFacility (${drugFacilityId} === ${user.facility}):`, isFromUserFacility);
+                                                // console.log(`  - hasStock (${drug.currentStock} > 0):`, hasStock);
+                                                // console.log(`  - Final Filter Result:`, isFromUserFacility && hasStock);
 
                                                 return isFromUserFacility && hasStock;
                                             })
@@ -426,7 +448,7 @@ const RedistributionPage = () => {
                                         <option disabled>No other facilities available.</option>
                                     ) : (
                                         facilities
-                                            .filter(fac => user && fac._id !== user.facility) 
+                                            .filter(fac => user && fac._id !== user.facility)
                                             .map((fac) => (
                                                 <option key={fac._id} value={fac._id}>
                                                     {fac.name}
@@ -534,12 +556,12 @@ const RedistributionPage = () => {
                                                 >
                                                     <td className="py-2 px-3 flex items-center gap-2">
                                                         <Package size={16} className="text-blue-400" />
-                                                        {request.drug?.drugName || 'N/A'} 
+                                                        {request.drug?.drugName || 'N/A'}
                                                     </td>
                                                     <td className="py-2 px-3">{request.quantity}</td>
-                                                    <td className="py-2 px-3">{request.fromFacility?.name || 'N/A'} 
+                                                    <td className="py-2 px-3">{request.fromFacility?.name || 'N/A'}
                                                     </td>
-                                                    <td className="py-2 px-3">{request.toFacility?.name || 'N/A'} 
+                                                    <td className="py-2 px-3">{request.toFacility?.name || 'N/A'}
                                                     </td>
                                                     <td className="py-2 px-3">{request.reason}</td>
                                                     <td className="py-2 px-3">

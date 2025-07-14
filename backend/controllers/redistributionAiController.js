@@ -3,20 +3,22 @@ import Inventory from '../models/inventoryModel.js';
 import Dispensation from '../models/dispensationModel.js';
 import Facility from '../models/facilityModel.js';
 import mongoose from 'mongoose';
-import axios from 'axios';
+import axios from 'axios'; // Import axios for making HTTP requests
 
 // Define a configurable threshold for "nearing expiry" in days
 const NEARING_EXPIRY_DAYS = 90;
+// Define the historical period for calculating Average Daily Consumption (ADC) in days
 const ADC_PERIOD_DAYS = 60; // Using 60 days for rolling average
 
 // GitHub AI API configuration
 const GITHUB_AI_API_URL = 'https://models.github.ai/inference/chat/completions';
+// IMPORTANT: Ensure your .env file has OPENAI_API_KEY set to your ghp_... GitHub token
 const GITHUB_AI_API_KEY = process.env.OPENAI_API_KEY;
 
 // --- Concurrency Control for Backend Endpoint ---
-let isGeneratingSuggestions = false;
-let lastGenerationTime = 0; 
-const MIN_GENERATION_INTERVAL_MS = 1 * 60 * 1000; 
+let isGeneratingSuggestions = false; // Flag to prevent multiple concurrent generations
+let lastGenerationTime = 0; // To track last successful generation
+const MIN_GENERATION_INTERVAL_MS = 1 * 60 * 1000; // 1 minute minimum interval between successful generations
 
 /**
  * Calls the GitHub AI model to get detailed justifications for multiple redistribution suggestions.
@@ -40,20 +42,22 @@ async function getLLMJustificationsBatched(suggestionPrompts) {
         return {}; // No prompts, no justifications needed
     }
 
-    const maxRetries = 5; 
-    const initialDelayMs = 1000; 
-    const maxDelayMs = 30000; 
-    const minGuaranteedDelayMs = 1000; 
+    const maxRetries = 5; // Maximum number of retries for rate limit errors
+    const initialDelayMs = 1000; // Initial delay in milliseconds (1 second)
+    const maxDelayMs = 30000; // Maximum delay for exponential backoff (30 seconds)
+    const minGuaranteedDelayMs = 1000; // Minimum delay to ensure we don't retry immediately
 
     let currentRetry = 0;
+
+    // Construct a single, comprehensive prompt asking for structured JSON output
     // Each suggestion will have an ID for easy mapping back
-    const userMessageContent = `You are an intelligent assistant for a pharmaceutical supply chain. Below are multiple potential drug redistribution suggestions. For each suggestion, provide a concise, professional, and actionable reason. Respond with a JSON array where each object has an 'id' matching the suggestion's 'id' and a 'reason' string.
+    const userMessageContent = `You are an expert pharmaceutical supply chain manager providing practical and relatable advice on drug redistribution. Below are multiple potential drug redistribution suggestions. For each suggestion, provide a concise, professional, and actionable reason that sounds human and focuses on real-world impact like patient care, cost savings, and preventing waste. Respond with a JSON object where each key is the suggestion's 'id' and the value is an object containing the 'id' and 'reason' string.
 
 Examples of desired output format:
-[
-  { "id": "suggestion_0", "reason": "Redistribute to prevent expiry and meet high demand at target facility." },
-  { "id": "suggestion_1", "reason": "Transfer excess stock from overstocked facility to one nearing reorder level." }
-]
+{
+  "suggestion_0": { "id": "suggestion_0", "reason": "Transferring this Paracetamol from [Source Facility Name] to [Target Facility Name] is crucial. It prevents the drug from expiring unused at your facility while ensuring [Target Facility Name] has enough to treat their patients, as they are currently low on stock." },
+  "suggestion_1": { "id": "suggestion_1", "reason": "Moving this Acetylcysteine Injection from your facility to [Target Facility Name] makes sense because your current stock is high and nearing expiry. [Target Facility Name] needs it to avoid a potential stockout, ensuring continuous patient care." }
+}
 
 Here are the suggestions to analyze:
 ${suggestionPrompts.map((s, index) => `
@@ -71,16 +75,16 @@ Suggested Quantity: ${s.suggestedQuantity}`).join('\n')}
                 messages: [
                     {
                         role: "system",
-                        content: "You are an intelligent assistant for a pharmaceutical supply chain. Provide concise, professional, and actionable reasons for drug redistribution. Focus on inventory optimization, preventing wastage, and ensuring supply where needed. Respond only with a JSON array of objects, each with an 'id' and 'reason' field. Do not include any other text or formatting outside the JSON."
+                        content: "You are an expert pharmaceutical supply chain manager providing practical and relatable advice on drug redistribution. Your goal is to explain *why* a transfer is beneficial, focusing on real-world impact like patient care, cost savings, and preventing waste. Make your reasons sound human, actionable, and easy to understand for facility managers. Respond only with a JSON object, where each key is a suggestion ID and the value is an object containing 'id' and 'reason' fields. Do not include any other text or formatting outside the JSON."
                     },
                     {
                         role: "user",
                         content: userMessageContent
                     }
                 ],
-                max_tokens: 1000, 
+                max_tokens: 1000, // Increased max_tokens for multiple reasons
                 temperature: 0.7,
-                response_format: { type: "json_object" } 
+                response_format: { type: "json_object" } // Request JSON object output
             }, {
                 headers: {
                     'Content-Type': 'application/json',
@@ -90,7 +94,9 @@ Suggested Quantity: ${s.suggestedQuantity}`).join('\n')}
 
             if (response.data && response.data.choices && response.data.choices.length > 0) {
                 const rawContent = response.data.choices[0].message.content.trim();
+                console.log("DEBUG LLM: Raw LLM response content:", rawContent);
                 try {
+                    // The model might wrap the JSON in markdown code block, so try to extract it
                     let jsonString = rawContent;
                     if (rawContent.startsWith('```json')) {
                         jsonString = rawContent.substring(7, rawContent.lastIndexOf('```')).trim();
@@ -99,14 +105,20 @@ Suggested Quantity: ${s.suggestedQuantity}`).join('\n')}
                     }
 
                     const parsedReasons = JSON.parse(jsonString);
+                    console.log("DEBUG LLM: Parsed LLM response JSON:", parsedReasons);
                     const reasonsMap = {};
-                    if (Array.isArray(parsedReasons)) {
-                        parsedReasons.forEach(item => {
-                            if (item.id && item.reason) {
-                                reasonsMap[item.id] = item.reason;
+                    // Iterate over the keys of the parsed object
+                    for (const key in parsedReasons) {
+                        if (parsedReasons.hasOwnProperty(key)) {
+                            const item = parsedReasons[key];
+                            // The LLM is returning { "suggestion_0": { id: "suggestion_0", reason: "..." } }
+                            // So we need to access item.reason, and the key is the id we want to map to.
+                            if (item && item.reason) {
+                                reasonsMap[key] = item.reason;
                             }
-                        });
+                        }
                     }
+                    console.log("DEBUG LLM: Final reasonsMap:", reasonsMap);
                     return reasonsMap;
                 } catch (parseError) {
                     console.error("Failed to parse LLM JSON response:", parseError, "Raw content:", rawContent);
@@ -169,12 +181,12 @@ Suggested Quantity: ${s.suggestedQuantity}`).join('\n')}
  */
 const calculateADCs = async () => {
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - ADC_PERIOD_DAYS); 
+    cutoffDate.setDate(cutoffDate.getDate() - ADC_PERIOD_DAYS); // Data from last ADC_PERIOD_DAYS
 
     const adcs = await Dispensation.aggregate([
         {
             $match: {
-                dateDispensed: { $gte: cutoffDate }
+                dateDispensed: { $gte: cutoffDate } // Filter for the historical period
             }
         },
         {
@@ -191,11 +203,12 @@ const calculateADCs = async () => {
                 _id: 0,
                 drug: '$_id.drug',
                 facility: '$_id.facility',
-                adc: { $divide: ['$totalDispensed', ADC_PERIOD_DAYS] } 
+                adc: { $divide: ['$totalDispensed', ADC_PERIOD_DAYS] } // Divide by the number of days
             }
         }
     ]);
 
+    // Convert array of objects to a map for easier lookup: 'facilityId_drugId' -> adcValue
     const adcMap = {};
     adcs.forEach(item => {
         adcMap[`${item.facility.toString()}_${item.drug.toString()}`] = item.adc;
@@ -214,7 +227,7 @@ export const getAiRedistributionSuggestions = asyncHandler(async (req, res) => {
         return res.status(401).json({ message: "Unauthorized: User facility information missing." });
     }
 
-    const userFacilityId = req.user.facility; 
+    const userFacilityId = req.user.facility; // Get the facility ID of the current user
 
     // Basic concurrency control: if a generation is already in progress, return a 429 or wait
     if (isGeneratingSuggestions) {
@@ -229,7 +242,7 @@ export const getAiRedistributionSuggestions = asyncHandler(async (req, res) => {
         return res.status(429).json({ message: `Please wait ${Math.ceil((MIN_GENERATION_INTERVAL_MS - (now - lastGenerationTime)) / 1000)} seconds before requesting new AI suggestions.` });
     }
 
-    isGeneratingSuggestions = true;
+    isGeneratingSuggestions = true; // Set flag to true at the start of generation
     console.log("Starting AI redistribution suggestions generation...");
 
     try {
@@ -237,31 +250,54 @@ export const getAiRedistributionSuggestions = asyncHandler(async (req, res) => {
         const adcMap = await calculateADCs();
         console.log(`Calculated ADCs for ${Object.keys(adcMap).length} drug-facility pairs.`);
 
-        // 2. Find drugs nearing expiry ONLY from the user's facility
+        // 2. Get all inventory for the user's facility (potential source facility)
+        const userFacilityInventory = await Inventory.find({
+            facility: userFacilityId,
+            currentStock: { $gt: 0 } // Only consider items with stock
+        })
+        .populate('facility', 'name type')
+        .select('drugName currentStock expiryDate facility reorderLevel batchNumber _id');
+        console.log(`Found ${userFacilityInventory.length} inventory items in user's facility.`);
+
+        const nearingExpiryDrugs = [];
         const nearingExpiryDate = new Date();
         nearingExpiryDate.setDate(nearingExpiryDate.getDate() + NEARING_EXPIRY_DAYS);
 
-        const nearingExpiryDrugs = await Inventory.find({
-            facility: userFacilityId, 
-            expiryDate: { $gt: new Date(), $lte: nearingExpiryDate }, 
-            currentStock: { $gt: 0 } 
-        })
-        .populate('facility', 'name type') 
-        .select('drugName currentStock expiryDate facility reorderLevel batchNumber _id');
-        console.log(`Found ${nearingExpiryDrugs.length} drugs nearing expiry in user's facility.`);
+        // Filter for drugs that are truly in surplus and nearing expiry at the source facility
+        for (const item of userFacilityInventory) {
+            // Check if the item is actually nearing expiry
+            if (item.expiryDate > new Date() && item.expiryDate <= nearingExpiryDate) {
+                // Get ADC for this specific drug at the source facility
+                // Note: The ADC map is based on drug _id, not inventory item _id.
+                // Assuming drug._id from inventory item is the drug ID used in dispensation
+                const sourceFacilityADC = adcMap[`${item.facility._id.toString()}_${item._id.toString()}`] || 0; // Assuming item._id is the drug ID
+
+                const daysUntilExpiry = Math.ceil((item.expiryDate - new Date()) / (1000 * 60 * 60 * 24));
+
+                // Calculate how much the source facility can consume before expiry
+                const sourceConsumableBeforeExpiry = sourceFacilityADC * daysUntilExpiry;
+
+                // Only add to nearingExpiryDrugs if current stock is more than what the source can consume before expiry
+                if (item.currentStock > sourceConsumableBeforeExpiry) {
+                    nearingExpiryDrugs.push(item);
+                }
+            }
+        }
+        console.log(`Filtered down to ${nearingExpiryDrugs.length} drugs truly in surplus and nearing expiry in user's facility.`);
+
 
         // 3. Get all facilities for context (e.g., type, location if available)
         const allFacilities = await Facility.find({ active: true }).select('_id name type');
         console.log(`Found ${allFacilities.length} active facilities.`);
 
         const potentialSuggestions = [];
-        const llmPromptsForBatch = []; 
+        const llmPromptsForBatch = []; // Collect prompts for batched LLM call
 
         // Iterate through nearing expiry drugs from the user's facility to find potential recipients
         for (const sourceDrug of nearingExpiryDrugs) {
-            const sourceFacility = sourceDrug.facility; 
+            const sourceFacility = sourceDrug.facility; // This will now always be the user's facility
             const daysUntilExpiry = Math.ceil((sourceDrug.expiryDate - new Date()) / (1000 * 60 * 60 * 24));
-            let suggestionsCountForCurrentDrug = 0; 
+            let suggestionsCountForCurrentDrug = 0; // Counter for suggestions for THIS drug
 
             for (const targetFacility of allFacilities) {
                 // Limit to 3 suggestions per drug
@@ -274,10 +310,13 @@ export const getAiRedistributionSuggestions = asyncHandler(async (req, res) => {
                     continue;
                 }
 
+                // IMPORTANT: Ensure sourceDrug._id is used for ADC lookup, not sourceDrug.drugName
                 // ADC map key is 'facilityId_drugId'
                 const targetFacilityADC = adcMap[`${targetFacility._id.toString()}_${sourceDrug._id.toString()}`];
 
                 if (targetFacilityADC && targetFacilityADC > 0) {
+                    // Fetch target facility's current stock of this specific drug (by drugName or drugId)
+                    // Using drugName for matching, assuming drugName is unique enough or represents the same drug across facilities
                     const targetDrugInventory = await Inventory.findOne({
                         facility: targetFacility._id,
                         drugName: sourceDrug.drugName, // Match by drugName
@@ -287,33 +326,37 @@ export const getAiRedistributionSuggestions = asyncHandler(async (req, res) => {
                     const targetReorderLevel = targetDrugInventory?.reorderLevel || 0;
 
                     const projectedDaysSupply = targetFacilityADC > 0 ? (targetCurrentStock / targetFacilityADC) : Infinity;
-                    const needsDrug = targetCurrentStock < targetReorderLevel || projectedDaysSupply < 30; 
+                    const needsDrug = targetCurrentStock < targetReorderLevel || projectedDaysSupply < 30; // Needs if below reorder or less than 30 days supply
 
                     if (needsDrug) {
+                        // Calculate how much the target facility can consume before the drug expires
+                        const quantityConsumableBeforeExpiryAtTarget = targetFacilityADC * daysUntilExpiry;
+
                         // Suggest a quantity that helps meet their need without overstocking
-                        const quantityToSuggestBasedOnNeed = Math.max(0, (targetReorderLevel * 1.5) - targetCurrentStock); 
-                        const quantityToSuggestBasedOnADC = Math.ceil(targetFacilityADC * 15); // Suggest 15 days supply
+                        const quantityToSuggestBasedOnNeed = Math.max(0, (targetReorderLevel * 1.5) - targetCurrentStock); // Aim for 1.5x reorder level
+                        const quantityToSuggestBasedOnADC = Math.ceil(targetFacilityADC * 15); // Suggest 15 days supply (arbitrary, can be tuned)
 
                         const suggestedQuantity = Math.min(
-                            sourceDrug.currentStock,
-                            Math.max(quantityToSuggestBasedOnNeed, quantityToSuggestBasedOnADC) 
+                            sourceDrug.currentStock, // Cannot suggest more than source has
+                            quantityConsumableBeforeExpiryAtTarget, // Cannot suggest more than target can consume before expiry
+                            Math.max(quantityToSuggestBasedOnNeed, quantityToSuggestBasedOnADC) // The target's calculated need
                         );
 
                         if (suggestedQuantity > 0) {
-                            const suggestionId = `suggestion_${potentialSuggestions.length}`; 
+                            const suggestionId = `suggestion_${potentialSuggestions.length}`; // Unique ID for mapping
                             potentialSuggestions.push({
-                                id: suggestionId, 
+                                id: suggestionId, // Store ID for mapping back
                                 drugId: sourceDrug._id,
                                 drugName: sourceDrug.drugName,
                                 batchNumber: sourceDrug.batchNumber,
                                 fromFacilityId: sourceFacility._id,
                                 fromFacilityName: sourceFacility.name,
-                                fromStock: sourceDrug.currentStock, 
+                                fromStock: sourceDrug.currentStock, // Add for LLM prompt
                                 toFacilityId: targetFacility._id,
                                 toFacilityName: targetFacility.name,
-                                toStock: targetCurrentStock, 
-                                toReorderLevel: targetReorderLevel, 
-                                targetADC: targetFacilityADC, 
+                                toStock: targetCurrentStock, // Add for LLM prompt
+                                toReorderLevel: targetReorderLevel, // Add for LLM prompt
+                                targetADC: targetFacilityADC, // Add for LLM prompt
                                 suggestedQuantity: suggestedQuantity,
                                 daysUntilExpiry: daysUntilExpiry
                             });
