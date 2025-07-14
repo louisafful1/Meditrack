@@ -9,8 +9,8 @@ import {
     Clock,
     Truck,
     Lightbulb,
-    Loader2, 
-    FileText 
+    Loader2,
+    FileText
 } from 'lucide-react';
 import Header from '../components/common/Header';
 import { toast } from 'react-toastify';
@@ -22,7 +22,7 @@ import {
     getRedistributions,
     approveRedistribution,
     declineRedistribution,
-    getAIRedistributionSuggestions, 
+    getAIRedistributionSuggestions,
     RESET_REDISTRIBUTION,
 } from '../redux/redistribution/redistributionSlice';
 import { getAllDrugs, RESET_DRUG } from '../redux/drug/drugSlice';
@@ -44,18 +44,18 @@ const getStatusIcon = (status) => {
         case 'pending': return <Clock className="h-4 w-4" />;
         case 'completed': return <CheckCircle className="h-4 w-4" />;
         case 'declined': return <XCircle className="h-4 w-4" />;
-        default: return <FileText className="h-4 w-4" />; 
+        default: return <FileText className="h-4 w-4" />;
     }
 };
 
 const RedistributionPage = () => {
     const dispatch = useDispatch();
-    const formRef = useRef(null); 
+    const formRef = useRef(null);
 
     // Selectors for Redistribution data
     const {
         redistributions,
-        suggestions, 
+        suggestions,
         isLoading: redistLoading,
         isError: redistError,
         message: redistMessage,
@@ -78,24 +78,42 @@ const RedistributionPage = () => {
         message: facilitiesMessage,
     } = useSelector((state) => state.facility);
 
-    const { user } = useSelector((state) => state.auth); // Get current user's facility ID
+    const { user } = useSelector((state) => state.auth); 
+
+    // --- DEBUGGING LOGS (CRITICAL FOR DIAGNOSIS) ---
+    console.group("RedistributionPage Debugging");
+    console.log("1. Frontend - User object from Redux:", user);
+    if (user) {
+        console.log("2. Frontend - User facility ID (user.facility):", user.facility);
+    } else {
+        console.log("2. Frontend - User object is null or undefined. Cannot determine user's facility.");
+    }
+    console.log("3. Frontend - Inventory Drugs array from Redux:", inventoryDrugs);
+    console.log("4. Frontend - Drugs Loading state:", drugsLoading);
+    console.log("5. Frontend - Drugs Error state:", drugsError);
+    console.log("6. Frontend - Drugs Error Message:", drugsMessage);
+    console.log("7. Frontend - AI Suggestions array:", suggestions);
+    console.log("8. Frontend - Redistribution/AI Loading state:", redistLoading);
+    console.log("9. Frontend - Redistribution/AI Error state:", redistError);
+    console.groupEnd();
+    // --- END DEBUGGING LOGS ---
+
 
     // Form states
-    const [selectedDrug, setSelectedDrug] = useState(''); // Stores drug ID
+    const [selectedDrug, setSelectedDrug] = useState(''); 
     const [quantity, setQuantity] = useState('');
-    const [toFacility, setToFacility] = useState(''); // Stores facility ID
+    const [toFacility, setToFacility] = useState(''); 
     const [reason, setReason] = useState('');
 
     // State for filtering logs
     const [filterStatus, setFilterStatus] = useState('all');
-    const [filterType, setFilterType] = useState('all'); 
+    const [filterType, setFilterType] = useState('all');
 
     // Fetch initial data on component mount
     useEffect(() => {
         dispatch(getRedistributions());
         dispatch(getAllDrugs());
         dispatch(getAllFacilities());
-        dispatch(getAIRedistributionSuggestions()); 
 
         // Cleanup
         return () => {
@@ -105,9 +123,32 @@ const RedistributionPage = () => {
         };
     }, [dispatch]);
 
+    // Handle toast messages for Redux state changes
+    useEffect(() => {
+        if (redistError) {
+            toast.error(redistMessage);
+        }
+        if (redistSuccess && redistMessage) { 
+            toast.success(redistMessage);
+        }
+        // Handle drug and facility errors as well
+        if (drugsError) {
+            toast.error(drugsMessage);
+        }
+        if (facilitiesError) {
+            toast.error(facilitiesMessage);
+        }
+    }, [redistError, redistMessage, redistSuccess, drugsError, drugsMessage, facilitiesError, facilitiesMessage]);
+
+
     // Function to fetch AI suggestions
     const handleGetSuggestions = () => {
-        dispatch(getAIRedistributionSuggestions());
+        // Only dispatch if not already loading to prevent multiple concurrent calls from frontend
+        if (!redistLoading) {
+            dispatch(getAIRedistributionSuggestions());
+        } else {
+            toast.info("AI suggestions are already being loaded or generated. Please wait.");
+        }
     };
 
     // Handle form submission for creating a redistribution request
@@ -125,9 +166,10 @@ const RedistributionPage = () => {
             return;
         }
 
+        // Ensure user's facility is not the target facility
         if (user && toFacility === user.facility) {
-             toast.error('Cannot redistribute drugs to your own facility.');
-             return;
+            toast.error('Cannot redistribute drugs to your own facility.');
+            return;
         }
 
         const redistributionData = {
@@ -146,18 +188,21 @@ const RedistributionPage = () => {
             setReason('');
             dispatch(getRedistributions()); // Re-fetch all redistributions
             dispatch(getAllDrugs()); // Re-fetch inventory drugs to update stock levels
-            dispatch(getAIRedistributionSuggestions()); // Re-fetch AI suggestions as inventory changes might affect them
+            // No need to re-fetch AI suggestions immediately here, as they are on button click
         }
     };
 
     // Handle approve/decline actions
     const handleApprove = async (id) => {
+        // Use a custom modal or confirmation component instead of window.confirm
+        // For now, keeping window.confirm for simplicity as per previous instructions,
+        // but note that it's not ideal for production UIs.
         if (window.confirm("Are you sure you want to APPROVE this redistribution request? This action will update inventory.")) {
             const resultAction = await dispatch(approveRedistribution(id));
             if (approveRedistribution.fulfilled.match(resultAction)) {
                 dispatch(getRedistributions());
                 dispatch(getAllDrugs());
-                dispatch(getAIRedistributionSuggestions());
+                // No need to re-fetch AI suggestions immediately here
             }
         }
     };
@@ -167,7 +212,6 @@ const RedistributionPage = () => {
             const resultAction = await dispatch(declineRedistribution(id));
             if (declineRedistribution.fulfilled.match(resultAction)) {
                 dispatch(getRedistributions());
-                dispatch(getAIRedistributionSuggestions()); // Re-fetch AI suggestions
             }
         }
     };
@@ -203,8 +247,10 @@ const RedistributionPage = () => {
         let matchesType = true;
 
         if (filterType === 'sent' && user) {
+            // Ensure request.fromFacility is populated and compare its _id
             matchesType = request.fromFacility && request.fromFacility._id === user.facility;
         } else if (filterType === 'received' && user) {
+            // Ensure request.toFacility is populated and compare its _id
             matchesType = request.toFacility && request.toFacility._id === user.facility;
         }
 
@@ -236,24 +282,24 @@ const RedistributionPage = () => {
                     <button
                         onClick={handleGetSuggestions}
                         className="mb-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-md flex items-center gap-2 transition-colors duration-200"
-                        disabled={redistLoading} // Disable if any redistribution action is loading
+                        disabled={redistLoading} 
                     >
-                        {redistLoading ? <Loader2 className="animate-spin h-5 w-5" /> : <Lightbulb size={20} />}
-                        {redistLoading ? 'Getting Suggestions...' : 'Get AI Suggestions'}
+                        {redistLoading && suggestions.length === 0 ? <Loader2 className="animate-spin h-5 w-5" /> : <Lightbulb size={20} />}
+                        {redistLoading && suggestions.length === 0 ? 'Getting Suggestions...' : 'Get AI Suggestions'}
                     </button>
 
-                    {redistLoading && suggestions.length === 0 ? ( // Show loading for suggestions if none are loaded yet
+                    {redistLoading && suggestions.length === 0 ? (
                         <div className="flex justify-center items-center py-4">
                             <Loader2 className="animate-spin text-emerald-400" size={24} />
                             <span className="ml-3 text-lg text-gray-300">Loading AI suggestions...</span>
                         </div>
-                    ) : redistError && suggestions.length === 0 ? ( // Show error for suggestions if none are loaded yet
+                    ) : redistError && suggestions.length === 0 ? ( 
                         <div className="text-center py-4 text-red-400">
                             Error loading AI suggestions: {redistMessage}
                         </div>
                     ) : (
                         <ul className="space-y-4">
-                            {suggestions.length > 0 ? ( // Use actual suggestions from Redux
+                            {suggestions.length > 0 ? ( 
                                 suggestions.map((suggestion, index) => (
                                     <li key={index} className="bg-gray-700 p-4 rounded-lg flex items-start gap-4">
                                         <Truck className="h-6 w-6 text-emerald-400 flex-shrink-0" />
@@ -286,7 +332,7 @@ const RedistributionPage = () => {
 
                 {/* Create New Redistribution Request Form */}
                 <motion.div
-                    ref={formRef} 
+                    ref={formRef}
                     className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -312,13 +358,37 @@ const RedistributionPage = () => {
                                 ) : drugsError ? (
                                     <option disabled>Error loading drugs</option>
                                 ) : (
-                                    inventoryDrugs
-                                        .filter(drug => user && drug.facility === user.facility && drug.currentStock > 0) // Only show drugs from current user's facility with stock
-                                        .map((drug) => (
-                                            <option key={drug._id} value={drug._id}>
-                                                {drug.drugName} (Batch: {drug.batchNumber || 'N/A'}, Stock: {drug.currentStock})
-                                            </option>
-                                        ))
+                                    inventoryDrugs.length === 0 ? (
+                                        <option disabled>No drugs found in your inventory with stock.</option>
+                                    ) : (
+                                        inventoryDrugs
+                                            .filter(drug => {
+                                                // Ensure user and user.facility exist
+                                                if (!user || !user.facility) {
+                                                    console.log(`DEBUG FILTER: Skipping drug ${drug.drugName} - User or user.facility is missing.`);
+                                                    return false;
+                                                }
+                                                // Get the facility ID from the drug object (handles populated object or string ID)
+                                                const drugFacilityId = drug.facility && typeof drug.facility === 'object' ? drug.facility._id : drug.facility;
+
+                                                const isFromUserFacility = drugFacilityId === user.facility;
+                                                const hasStock = drug.currentStock > 0;
+
+                                                console.log(`DEBUG FILTER: Drug: ${drug.drugName} (ID: ${drug._id})`);
+                                                console.log(`  - drug.facility:`, drug.facility, `(Resolved ID: ${drugFacilityId})`);
+                                                console.log(`  - user.facility:`, user.facility);
+                                                console.log(`  - isFromUserFacility (${drugFacilityId} === ${user.facility}):`, isFromUserFacility);
+                                                console.log(`  - hasStock (${drug.currentStock} > 0):`, hasStock);
+                                                console.log(`  - Final Filter Result:`, isFromUserFacility && hasStock);
+
+                                                return isFromUserFacility && hasStock;
+                                            })
+                                            .map((drug) => (
+                                                <option key={drug._id} value={drug._id}>
+                                                    {drug.drugName} (Batch: {drug.batchNumber || 'N/A'}, Stock: {drug.currentStock})
+                                                </option>
+                                            ))
+                                    )
                                 )}
                             </select>
                             {drugsError && <p className="text-red-400 text-xs mt-1">Error fetching drugs: {drugsMessage}</p>}
@@ -352,13 +422,17 @@ const RedistributionPage = () => {
                                 ) : facilitiesError ? (
                                     <option disabled>Error loading facilities</option>
                                 ) : (
-                                    facilities
-                                        .filter(fac => user && fac._id !== user.facility) // Exclude current user's facility
-                                        .map((fac) => (
-                                            <option key={fac._id} value={fac._id}>
-                                                {fac.name}
-                                            </option>
-                                        ))
+                                    facilities.length === 0 ? (
+                                        <option disabled>No other facilities available.</option>
+                                    ) : (
+                                        facilities
+                                            .filter(fac => user && fac._id !== user.facility) 
+                                            .map((fac) => (
+                                                <option key={fac._id} value={fac._id}>
+                                                    {fac.name}
+                                                </option>
+                                            ))
+                                    )
                                 )}
                             </select>
                             {facilitiesError && <p className="text-red-400 text-xs mt-1">Error fetching facilities: {facilitiesMessage}</p>}
@@ -460,12 +534,12 @@ const RedistributionPage = () => {
                                                 >
                                                     <td className="py-2 px-3 flex items-center gap-2">
                                                         <Package size={16} className="text-blue-400" />
-                                                        {request.drug?.drugName || 'N/A'} {/* Added optional chaining */}
+                                                        {request.drug?.drugName || 'N/A'} 
                                                     </td>
                                                     <td className="py-2 px-3">{request.quantity}</td>
-                                                    <td className="py-2 px-3">{request.fromFacility?.name || 'N/A'} {/* Added optional chaining */}
+                                                    <td className="py-2 px-3">{request.fromFacility?.name || 'N/A'} 
                                                     </td>
-                                                    <td className="py-2 px-3">{request.toFacility?.name || 'N/A'} {/* Added optional chaining */}
+                                                    <td className="py-2 px-3">{request.toFacility?.name || 'N/A'} 
                                                     </td>
                                                     <td className="py-2 px-3">{request.reason}</td>
                                                     <td className="py-2 px-3">
@@ -475,7 +549,7 @@ const RedistributionPage = () => {
                                                     </td>
                                                     <td className="py-2 px-3">{new Date(request.createdAt).toLocaleString()}</td>
                                                     <td className="py-2 px-3">
-                                                        {request.status === 'pending' && user && request.toFacility?._id === user.facility && ( // Added optional chaining
+                                                        {request.status === 'pending' && user && request.toFacility?._id === user.facility && (
                                                             <div className="flex gap-2">
                                                                 <button
                                                                     onClick={() => handleApprove(request._id)}
@@ -495,7 +569,7 @@ const RedistributionPage = () => {
                                                                 </button>
                                                             </div>
                                                         )}
-                                                        {request.status === 'pending' && user && request.fromFacility?._id === user.facility && ( // Added optional chaining
+                                                        {request.status === 'pending' && user && request.fromFacility?._id === user.facility && (
                                                             <span className="text-gray-500 italic text-xs">Awaiting Approval</span>
                                                         )}
                                                     </td>

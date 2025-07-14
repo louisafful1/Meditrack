@@ -158,9 +158,8 @@ const redistributionSlice = createSlice({
             .addCase(createRedistribution.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                state.redistributions.push(action.payload); // Add new request to list
+                state.redistributions.push(action.payload); 
                 state.message = "Redistribution request created successfully!";
-                toast.success(state.message);
             })
             .addCase(createRedistribution.rejected, (state, action) => {
                 state.isLoading = false;
