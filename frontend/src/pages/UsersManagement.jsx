@@ -44,6 +44,7 @@ export default function UsersManagement() {
     const [modalMode, setModalMode] = useState("add"); 
     const [selectedUser, setSelectedUser] = useState(null);
     const [page, setPage] = useState(1); 
+    const [usersFetched, setUsersFetched] = useState(false); // Track if users have been fetched
 
     // State for custom confirmation modal
     const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -71,21 +72,20 @@ export default function UsersManagement() {
         page * usersPerPage
     );
 
-    // Fetch users on component mount
+    // Fetch users when loading state changes - FIXED: Refetch only when necessary
     useEffect(() => {
-        dispatch(getUsers());
-        return () => {
-            dispatch(RESET_AUTH());
-        };
-    }, [dispatch]);
+        if (!isLoading && users.length === 0) {
+            dispatch(getUsers());
+        }
+    }, [dispatch, isLoading, users.length]);
 
+    // Handle errors - FIXED: Remove automatic re-fetching on error
     useEffect(() => {
         if (isError && message) {
             toast.error(message);
             dispatch(RESET_AUTH()); 
         }
     }, [isError, message, dispatch]);
-
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -116,9 +116,10 @@ export default function UsersManagement() {
 
         // Handle the result directly after the dispatch
         if (resultAction.meta.requestStatus === 'fulfilled') {
-            dispatch(getUsers()); 
+            // FIXED: Remove unnecessary re-fetch, Redux state should be updated
             setShowModal(false); 
             setFormData(emptyFormState); // Reset form
+            toast.success(modalMode === "add" ? "User added successfully!" : "User updated successfully!");
         } else if (resultAction.meta.requestStatus === 'rejected') {
             console.error("Form submission failed:", resultAction.payload);
         }
@@ -168,7 +169,6 @@ export default function UsersManagement() {
     };
     // --- End Custom Confirmation Modal Logic ---
 
-
     const handleDelete = (userId) => {
         showConfirmation(
             "Confirm Deletion",
@@ -176,7 +176,8 @@ export default function UsersManagement() {
             async () => {
                 const resultAction = await dispatch(deleteUser(userId));
                 if (deleteUser.fulfilled.match(resultAction)) {
-                    dispatch(getUsers()); // Re-fetch users
+                    // FIXED: Remove unnecessary re-fetch, Redux state should be updated
+                    toast.success("User deleted successfully!");
                 } else if (deleteUser.rejected.match(resultAction)) {
                     toast.error(resultAction.payload || "Failed to delete user.");
                 }
@@ -198,7 +199,7 @@ export default function UsersManagement() {
                 const resultAction = await dispatch(toggleStatus(userId));
                 if (toggleStatus.fulfilled.match(resultAction)) {
                     toast.success(`User ${actionMessage}d successfully!`);
-                    dispatch(getUsers()); // Re-fetch users
+                    // FIXED: Remove unnecessary re-fetch, Redux state should be updated
                 } else if (toggleStatus.rejected.match(resultAction)) {
                     toast.error(resultAction.payload || "Failed to change user status.");
                 }
