@@ -116,10 +116,13 @@ export default function UsersManagement() {
 
         // Handle the result directly after the dispatch
         if (resultAction.meta.requestStatus === 'fulfilled') {
-            // FIXED: Remove unnecessary re-fetch, Redux state should be updated
             setShowModal(false); 
             setFormData(emptyFormState); // Reset form
             toast.success(modalMode === "add" ? "User added successfully!" : "User updated successfully!");
+            if (modalMode === "add") {
+                await dispatch(getUsers()); // Fetch latest users after adding
+                setPage(1); // Optionally reset to first page
+            }
         } else if (resultAction.meta.requestStatus === 'rejected') {
             console.error("Form submission failed:", resultAction.payload);
         }

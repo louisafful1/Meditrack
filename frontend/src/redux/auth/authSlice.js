@@ -220,9 +220,13 @@ const authSlice = createSlice({
       .addCase(register.pending, (state) => {
         state.isLoading = true;
       })
-      .addCase(register.fulfilled, (state) => {
+      .addCase(register.fulfilled, (state, action) => {
         state.isLoading = false;
         state.isSuccess = true;
+        // Add the new user to the users array if returned by backend
+        if (action.payload && action.payload._id) {
+            state.users = [action.payload, ...state.users];
+        }
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false;
