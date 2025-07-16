@@ -71,17 +71,21 @@ export default function UsersManagement() {
         page * usersPerPage
     );
 
-    // Fetch users on component mount - FIXED
+    // Fetch users on component mount
     useEffect(() => {
         dispatch(getUsers());
+        return () => {
+            dispatch(RESET_AUTH());
+        };
     }, [dispatch]);
 
-    // Handle error messages - FIXED (removed RESET_AUTH dispatch)
     useEffect(() => {
         if (isError && message) {
             toast.error(message);
+            dispatch(RESET_AUTH()); 
         }
-    }, [isError, message]);
+    }, [isError, message, dispatch]);
+
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -110,11 +114,11 @@ export default function UsersManagement() {
             resultAction = await dispatch(updateUser({ id: selectedUser._id, userData: { name, phone, role, active } }));
         }
 
-        // Handle the result - REMOVED unnecessary getUsers() call
+        // Handle the result directly after the dispatch
         if (resultAction.meta.requestStatus === 'fulfilled') {
+            dispatch(getUsers()); 
             setShowModal(false); 
-            setFormData(emptyFormState);
-            toast.success(modalMode === "add" ? "User added successfully!" : "User updated successfully!");
+            setFormData(emptyFormState); // Reset form
         } else if (resultAction.meta.requestStatus === 'rejected') {
             console.error("Form submission failed:", resultAction.payload);
         }
@@ -147,14 +151,14 @@ export default function UsersManagement() {
 
     const handleConfirmAction = async () => {
         // Disable buttons while action is in progress
-        setConfirmModalContent(prev => ({ ...prev, action: null }));
+        setConfirmModalContent(prev => ({ ...prev, action: null })); // Prevent re-execution
         try {
             if (confirmModalContent.action) {
-                await confirmModalContent.action();
+                await confirmModalContent.action(); // Execute the stored action
             }
         } finally {
-            setShowConfirmModal(false);
-            setConfirmModalContent({ title: "", message: "", action: null });
+            setShowConfirmModal(false); // Close modal regardless of success/failure
+            setConfirmModalContent({ title: "", message: "", action: null }); // Reset content
         }
     };
 
@@ -164,6 +168,7 @@ export default function UsersManagement() {
     };
     // --- End Custom Confirmation Modal Logic ---
 
+
     const handleDelete = (userId) => {
         showConfirmation(
             "Confirm Deletion",
@@ -171,8 +176,7 @@ export default function UsersManagement() {
             async () => {
                 const resultAction = await dispatch(deleteUser(userId));
                 if (deleteUser.fulfilled.match(resultAction)) {
-                    toast.success("User deleted successfully!");
-                    // No need to manually call getUsers() - Redux state is updated in the slice
+                    dispatch(getUsers()); // Re-fetch users
                 } else if (deleteUser.rejected.match(resultAction)) {
                     toast.error(resultAction.payload || "Failed to delete user.");
                 }
@@ -184,7 +188,7 @@ export default function UsersManagement() {
         const userToToggle = users.find(u => u._id === userId);
         if (!userToToggle) return;
 
-        const newStatus = !Boolean(userToToggle.active);
+        const newStatus = !Boolean(userToToggle.active); // Determine new status
         const actionMessage = newStatus ? "activate" : "deactivate";
 
         showConfirmation(
@@ -194,7 +198,7 @@ export default function UsersManagement() {
                 const resultAction = await dispatch(toggleStatus(userId));
                 if (toggleStatus.fulfilled.match(resultAction)) {
                     toast.success(`User ${actionMessage}d successfully!`);
-                    // No need to manually call getUsers() - Redux state is updated in the slice
+                    dispatch(getUsers()); // Re-fetch users
                 } else if (toggleStatus.rejected.match(resultAction)) {
                     toast.error(resultAction.payload || "Failed to change user status.");
                 }
@@ -234,7 +238,7 @@ export default function UsersManagement() {
 
                 {/* Users Table */}
                 <div className="overflow-x-auto rounded-lg border border-gray-800">
-                    {isLoading ? (
+                    {isLoading && users.length === 0 ? (
                         <div className="flex justify-center items-center py-10">
                             <Loader2 className="animate-spin text-indigo-400" size={32} />
                             <span className="ml-3 text-lg text-gray-300">Loading users...</span>
@@ -376,7 +380,7 @@ export default function UsersManagement() {
                                         required
                                         placeholder="Email"
                                         className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
-                                        disabled={isLoading || modalMode === "edit"}
+                                        disabled={isLoading || modalMode === "edit"} // Email usually not editable
                                     />
                                     <input
                                         type="tel"
@@ -398,10 +402,11 @@ export default function UsersManagement() {
                                         <option value="">Select Role</option>
                                         {ROLES.map((r) => (
                                             <option key={r} value={r}>
-                                                {r.charAt(0).toUpperCase() + r.slice(1)}
+                                                {r.charAt(0).toUpperCase() + r.slice(1)} {/* Capitalize role for display */}
                                             </option>
                                         ))}
                                     </select>
+                                    {/* Active status for edit mode */}
                                     {modalMode === "edit" && (
                                         <div className="flex items-center justify-between text-gray-300">
                                             <label htmlFor="user-active-status" className="block text-sm font-medium">Status:</label>
@@ -410,8 +415,8 @@ export default function UsersManagement() {
                                                     type="checkbox"
                                                     id="user-active-status"
                                                     name="active"
-                                                    checked={Boolean(active)}
-                                                    onChange={handleInputChange}
+                                                    checked={Boolean(active)} // Ensure it's a boolean
+                                                    onChange={handleInputChange} // Uses handleInputChange
                                                     className="sr-only peer"
                                                     disabled={isLoading}
                                                 />
