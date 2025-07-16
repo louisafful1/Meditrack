@@ -8,9 +8,9 @@ const initialState = {
   users: [],
   isError: false,
   isSuccess: false,
-  isLoading: true, // Start with loading true to check auth status on app load
+  isLoading: false, // <-- change this to false
   message: "",
-  isInitialized: false, // Track if initial auth check is complete
+  isInitialized: false,
 };
 
 // Register User
@@ -220,9 +220,13 @@ const authSlice = createSlice({
       .addCase(register.pending, (state) => {
         state.isLoading = true;
       })
-      .addCase(register.fulfilled, (state) => {
+      .addCase(register.fulfilled, (state, action) => {
         state.isLoading = false;
         state.isSuccess = true;
+        // Add the new user to the users array if it exists
+        if (action.payload && action.payload.user) {
+          state.users.push(action.payload.user);
+        }
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false;
@@ -384,11 +388,9 @@ const authSlice = createSlice({
       .addCase(deleteUser.fulfilled, (state, action) => {
         state.isLoading = false;
         state.isSuccess = true;
-   
         state.users = state.users.filter(
           (user) => user._id !== action.payload._id
         );
-
       })
       .addCase(deleteUser.rejected, (state, action) => {
         state.isLoading = false;
