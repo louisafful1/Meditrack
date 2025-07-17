@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, XCircle, Loader2, Clipboard } from 'lucide-react'; // Added Clipboard for consistency
+import { PlusCircle, XCircle, Loader2, Clipboard } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import { createDrug, updateDrug } from '../../redux/drug/drugSlice'; // Assuming these actions exist
 import { toast } from 'react-toastify';
@@ -27,7 +27,7 @@ const ManualEntryForm = ({ onCancel, initialData, onSubmissionSuccess }) => {
     const [supplier, setSupplier] = useState('');
     const [expiryDate, setExpiryDate] = useState('');
     const [receivedDate, setReceivedDate] = useState('');
-    const [reorderLevel, setReorderLevel] = useState(''); // Added reorderLevel
+    const [reorderLevel, setReorderLevel] = useState('');
 
     // Use a state to track if we are editing an existing drug
     const [isEditing, setIsEditing] = useState(false);
@@ -42,7 +42,7 @@ const ManualEntryForm = ({ onCancel, initialData, onSubmissionSuccess }) => {
             setSupplier(initialData.supplier || '');
             setExpiryDate(formatDateForInput(initialData.expiryDate));
             setReceivedDate(formatDateForInput(initialData.receivedDate));
-            setReorderLevel(initialData.reorderLevel || ''); // Populate reorderLevel
+            setReorderLevel(initialData.reorderLevel || '');
 
             // If initialData contains an _id, it means we are editing an existing drug
             if (initialData._id) {
@@ -79,7 +79,7 @@ const ManualEntryForm = ({ onCancel, initialData, onSubmissionSuccess }) => {
             return;
         }
 
-        if (parseInt(currentStock) < 0) { // Changed to 0, as stock can be 0 (e.g., after depletion)
+        if (parseInt(currentStock) < 0) {
             return toast.error("Current Stock cannot be negative.");
         }
         if (parseInt(reorderLevel) < 0) {
@@ -87,8 +87,8 @@ const ManualEntryForm = ({ onCancel, initialData, onSubmissionSuccess }) => {
         }
 
         const drugData = {
-            drugName,
-            batchNumber,
+            drugName: drugName.trim(), // Trim whitespace
+            batchNumber: batchNumber.trim(), // Trim whitespace
             currentStock: Number(currentStock),
             supplier,
             expiryDate: new Date(expiryDate).toISOString(),
@@ -100,18 +100,17 @@ const ManualEntryForm = ({ onCancel, initialData, onSubmissionSuccess }) => {
                     Number(currentStock) <= Number(reorderLevel) ? "Low Stock" : "Adequate"
         };
 
-        let resultAction;
-        if (isEditing) {
-            // For editing, we send the ID and the updated data
-            resultAction = await dispatch(updateDrug({ id: editingDrugId, drugData }));
-        } else {
-            // For new entry
-            resultAction = await dispatch(createDrug(drugData));
-        }
+        try {
+            let resultAction;
+            if (isEditing) {
+                resultAction = await dispatch(updateDrug({ id: editingDrugId, drugData })).unwrap();
+            } else {
+                resultAction = await dispatch(createDrug(drugData)).unwrap();
+            }
 
-        if (resultAction.meta.requestStatus === 'fulfilled') {
             toast.success(`Drug ${isEditing ? 'updated' : 'added'} successfully!`);
             onSubmissionSuccess && onSubmissionSuccess(); // Notify parent on success
+
             // Clear form after successful submission
             setDrugName('');
             setBatchNumber('');
@@ -122,11 +121,11 @@ const ManualEntryForm = ({ onCancel, initialData, onSubmissionSuccess }) => {
             setReorderLevel('');
             setIsEditing(false);
             setEditingDrugId(null);
-        } else {
-            // Handle error message from payload if available, otherwise generic
-            const errorMessage = resultAction.payload?.message || resultAction.error?.message || 'Unknown error';
+        } catch (error) {
+            // This catches errors from the Redux thunk (e.g., backend unique key error)
+            const errorMessage = error.message || error.toString() || 'Unknown error';
             toast.error(`Failed to ${isEditing ? 'update' : 'add'} drug: ${errorMessage}`);
-            console.error(`Error ${isEditing ? 'updating' : 'adding'} drug:`, resultAction.payload || resultAction.error);
+            console.error(`Error ${isEditing ? 'updating' : 'adding'} drug:`, error);
         }
     };
 
@@ -174,7 +173,6 @@ const ManualEntryForm = ({ onCancel, initialData, onSubmissionSuccess }) => {
                 <label htmlFor="currentStock" className="text-sm block mb-1 text-gray-300">Current Stock</label>
                 <input
                     type="number"
-                    name="currentStock"
                     id="currentStock"
                     value={currentStock}
                     onChange={(e) => setCurrentStock(e.target.value)}

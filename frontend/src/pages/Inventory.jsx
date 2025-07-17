@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     Package, AlertCircle, Boxes, ArrowUpDown, Search,
     Edit, Trash2, Download, X,
-    QrCode // Added QrCode icon for clarity
+    QrCode
 } from "lucide-react";
 import Header from "../components/common/Header";
 import ManualEntryForm from "../components/inventory/ManualEntryForm";
@@ -12,71 +12,36 @@ import { useDispatch, useSelector } from "react-redux";
 import {
     deleteDrug,
     getAllDrugs,
-    createDrug, // Assuming this action exists in drugSlice
-    updateDrug, // Assuming this action exists in drugSlice
+    createDrug,
+    updateDrug,
     RESET_DRUG
 } from "../redux/drug/drugSlice";
-import { toast } from 'react-toastify'; // Ensure toast is imported
+import { toast } from 'react-toastify';
 
 const InventoryPage = () => {
     const dispatch = useDispatch();
     const { drugs = [], isLoading, isError, message } = useSelector((state) => state.drug || {});
-    const { user } = useSelector((state) => state.auth); // Get current user for facility ID
+    const { user } = useSelector((state) => state.auth);
 
     const [searchTerm, setSearchTerm] = useState("");
     const [filter, setFilter] = useState("all");
     const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
     const [page, setPage] = useState(1);
-    const [entryMode, setEntryMode] = useState("qr"); // 'qr' or 'manual'
-    const [showEditModal, setShowEditModal] = useState(false);
+    const [entryMode, setEntryMode] = useState("qr");
     const [selectedDrug, setSelectedDrug] = useState(null);
-    const [scannedDrugData, setScannedDrugData] = useState(null); // State for scanned QR data
+    const [scannedDrugData, setScannedDrugData] = useState(null);
+    const [highlightedDrugId, setHighlightedDrugId] = useState(null);
+
+    const [isEditing, setIsEditing] = useState(false);
+    const [isQRScanning, setIsQRScanning] = useState(false);
+
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [drugToDeleteId, setDrugToDeleteId] = useState(null);
+
+
+    const tableBodyRef = useRef(null);
 
     const rowsPerPage = 10;
-
-    // Fetch drugs on component mount and when relevant Redux states change
-    useEffect(() => {
-        dispatch(getAllDrugs());
-        // Cleanup function for Redux state
-        return () => {
-            dispatch(RESET_DRUG());
-        };
-    }, [dispatch]);
-
-    // Handle toast messages for drug-related Redux state changes
-    useEffect(() => {
-        if (isError && message) {
-            toast.error(message);
-        }
-    }, [isError, message]);
-
-
-    const handleDeleteDrug = (drugId) => {
-        if (window.confirm("Are you sure you want to delete this drug from inventory? This action cannot be undone.")) {
-            dispatch(deleteDrug(drugId))
-                .unwrap()
-                .then(() => {
-                    toast.success("Drug deleted successfully!");
-                    dispatch(getAllDrugs()); // Refresh the list after deletion
-                })
-                .catch((error) => {
-                    toast.error(`Failed to delete drug: ${error.message || error}`);
-                });
-        }
-    };
-
-    const handleEditClick = (drug) => {
-        setSelectedDrug(drug);
-        setShowEditModal(true);
-    };
-
-    const handleSort = (key) => {
-        let direction = "asc";
-        if (sortConfig.key === key && sortConfig.direction === "asc") {
-            direction = "desc";
-        }
-        setSortConfig({ key, direction });
-    };
 
     const filtered = drugs.filter((item) => {
         const matchesSearch = item.drugName.toLowerCase().includes(searchTerm.toLowerCase());
@@ -100,6 +65,89 @@ const InventoryPage = () => {
     const paginated = sorted.slice((page - 1) * rowsPerPage, page * rowsPerPage);
     const totalPages = Math.ceil(sorted.length / rowsPerPage);
 
+    useEffect(() => {
+        dispatch(getAllDrugs());
+        return () => {
+            dispatch(RESET_DRUG());
+        };
+    }, [dispatch]);
+
+    useEffect(() => {
+        if (highlightedDrugId && tableBodyRef.current) {
+            const isRowOnCurrentPage = paginated.some(item => item._id === highlightedDrugId);
+
+            if (isRowOnCurrentPage) {
+                const rowElement = tableBodyRef.current.querySelector(`tr[data-id="${highlightedDrugId}"]`);
+                if (rowElement) {
+                    rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const timer = setTimeout(() => {
+                        setHighlightedDrugId(null);
+                    }, 3000);
+                    return () => clearTimeout(timer);
+                }
+            } else if (highlightedDrugId) {
+                const originalIndex = sorted.findIndex(item => item._id === highlightedDrugId);
+                if (originalIndex !== -1) {
+                    const targetPage = Math.floor(originalIndex / rowsPerPage) + 1;
+                    setPage(targetPage);
+                }
+            }
+        }
+    }, [highlightedDrugId, paginated, sorted, rowsPerPage, setPage]);
+
+    useEffect(() => {
+        if (isError && message) {
+            toast.error(message);
+        }
+    }, [isError, message]);
+
+    const handleDeleteDrug = (drugId) => {
+        setDrugToDeleteId(drugId);
+        setShowConfirmModal(true);
+    };
+
+    const confirmDelete = () => {
+        if (drugToDeleteId) {
+            // --- CRITICAL CHANGE FOR DELETE ---
+            // Pass only the ID string to the deleteDrug thunk
+            dispatch(deleteDrug(drugToDeleteId))
+                .unwrap()
+                .then(() => {
+                    toast.success("Drug deleted successfully!");
+                    dispatch(getAllDrugs()); // Refresh the list
+                })
+                .catch((error) => {
+                    toast.error(`Failed to delete drug: ${error.message || error}`);
+                })
+                .finally(() => {
+                    setShowConfirmModal(false); // Close modal
+                    setDrugToDeleteId(null); // Clear ID
+                });
+        }
+    };
+
+    const cancelDelete = () => {
+        setShowConfirmModal(false);
+        setDrugToDeleteId(null);
+    };
+
+    const handleEditClick = (drug) => {
+        setSelectedDrug(drug);
+        setScannedDrugData(drug);
+        setEntryMode("manual");
+        setIsEditing(true);
+        setHighlightedDrugId(null);
+        setIsQRScanning(false);
+    };
+
+    const handleSort = (key) => {
+        let direction = "asc";
+        if (sortConfig.key === key && sortConfig.direction === "asc") {
+            direction = "desc";
+        }
+        setSortConfig({ key, direction });
+    };
+
     const handleExportCSV = () => {
         if (!drugs.length) {
             toast.info("No data to export.");
@@ -118,75 +166,60 @@ const InventoryPage = () => {
         toast.success("Inventory data exported successfully!");
     };
 
-    // --- QR Scan Result Handler ---
     const handleQRResult = async (data) => {
         try {
             const scannedData = JSON.parse(data);
-            console.log("Scanned data:", scannedData);
 
             if (!user || !user.facility) {
                 toast.error("User facility information not available. Please log in or ensure your user profile is complete.");
                 return;
             }
+            const userFacilityId = typeof user.facility === 'object' && user.facility._id
+                                   ? user.facility._id
+                                   : user.facility;
 
-            // Ensure the scanned drug is associated with the current user's facility.
-            scannedData.facility = user.facility;
+            scannedData.facility = userFacilityId;
 
-            // Check if this drug (by drugName and batchNumber) already exists in the user's inventory
-            const existingDrug = drugs.find(
-                (d) =>
-                    d.drugName === scannedData.drugName &&
-                    d.batchNumber === scannedData.batchNumber &&
-                    // Handle both populated facility object and direct facility ID string
-                    (d.facility && typeof d.facility === 'object' ? d.facility._id : d.facility) === user.facility
+            const scannedDrugNameNormalized = scannedData.drugName?.toLowerCase().trim();
+            const scannedBatchNumberNormalized = scannedData.batchNumber?.toLowerCase().trim();
+
+            const fetchedDrugsAction = await dispatch(getAllDrugs());
+            const freshDrugs = Array.isArray(fetchedDrugsAction.payload) ? fetchedDrugsAction.payload : [];
+
+            const existingDrug = freshDrugs.find(
+                (d) => {
+                    const existingDrugNameNormalized = d.drugName?.toLowerCase().trim();
+                    const existingBatchNumberNormalized = d.batchNumber?.toLowerCase().trim();
+                    const existingFacilityId = d.facility && typeof d.facility === 'object' && d.facility._id
+                                               ? d.facility._id
+                                               : d.facility;
+
+                    const nameMatch = existingDrugNameNormalized === scannedDrugNameNormalized;
+                    const batchMatch = existingBatchNumberNormalized === scannedBatchNumberNormalized;
+                    const facilityMatch = existingFacilityId === userFacilityId;
+
+                    return nameMatch && batchMatch && facilityMatch;
+                }
             );
 
             if (existingDrug) {
-                // If drug exists, update its stock
-                const quantityToAdd = scannedData.currentStock || 0;
-                if (quantityToAdd <= 0) {
-                    toast.warn("Scanned quantity is zero or negative. No stock update performed.");
-                    return;
-                }
-
-                const updatedStock = existingDrug.currentStock + quantityToAdd;
-                const updatedDrugData = {
-                    ...existingDrug, // Keep existing properties
-                    currentStock: updatedStock,
-                    // Optionally update other fields if QR data is more current
-                    expiryDate: scannedData.expiryDate || existingDrug.expiryDate,
-                    supplier: scannedData.supplier || existingDrug.supplier,
-                    receivedDate: new Date().toISOString(), // New stock received, update date
-                    status: updatedStock <= existingDrug.reorderLevel / 2 ? "Critical" :
-                            updatedStock <= existingDrug.reorderLevel ? "Low Stock" : "Adequate"
-                };
-
-                // Remove _id from updatedDrugData as it's passed separately in updateDrug action
-                delete updatedDrugData._id;
-
-                dispatch(updateDrug({ id: existingDrug._id, drugData: updatedDrugData }))
-                    .unwrap()
-                    .then(() => {
-                        toast.success(`Successfully updated stock for ${scannedData.drugName} (Batch: ${scannedData.batchNumber}). New stock: ${updatedStock}`);
-                        dispatch(getAllDrugs()); // Refresh data after update
-                    })
-                    .catch((error) => {
-                        toast.error(`Failed to update drug: ${error.message || error.toString()}`);
-                        console.error("Update drug error:", error);
-                    });
+                toast.info(`Drug "${scannedData.drugName}" (Batch: ${scannedData.batchNumber}) is already in your inventory. Scrolling to highlight.`);
+                setHighlightedDrugId(existingDrug._id);
+                setScannedDrugData(null);
+                setEntryMode("qr");
+                setIsEditing(false);
             } else {
-                // If drug does not exist, set it to scannedDrugData and switch to manual entry
-                // This will pre-fill the form for a new entry
                 setScannedDrugData(scannedData);
                 setEntryMode("manual");
-                toast.info("New drug detected. Please verify details and add manually.");
+                setIsEditing(false);
+                setHighlightedDrugId(null);
+                toast.info("New drug batch detected. Please verify details and add manually.");
             }
         } catch (error) {
             toast.error(`Invalid QR code data format: ${error.message}`);
             console.error("Error parsing QR data:", error);
         }
     };
-
 
     return (
         <div className="flex flex-col flex-1 overflow-y-auto text-gray-300 z-9">
@@ -207,9 +240,14 @@ const InventoryPage = () => {
                             <QRScannerSection
                                 onSwitchToManual={() => {
                                     setEntryMode("manual");
-                                    setScannedDrugData(null); // Clear scanned data if manual is chosen this way
+                                    setScannedDrugData(null);
+                                    setHighlightedDrugId(null);
+                                    setIsEditing(false);
+                                    setIsQRScanning(false);
                                 }}
-                                onResult={handleQRResult} // Use the new handler
+                                onResult={handleQRResult}
+                                isScanning={isQRScanning}
+                                setIsScanning={setIsQRScanning}
                             />
                         </motion.div>
                     ) : (
@@ -224,13 +262,20 @@ const InventoryPage = () => {
                             <ManualEntryForm
                                 onCancel={() => {
                                     setEntryMode("qr");
-                                    setScannedDrugData(null); // Clear scanned data when canceling manual entry
+                                    setScannedDrugData(null);
+                                    setHighlightedDrugId(null);
+                                    setIsEditing(false);
+                                    setIsQRScanning(false);
                                 }}
-                                initialData={scannedDrugData} // Pass scanned data to ManualEntryForm
+                                initialData={scannedDrugData}
+                                isEditing={isEditing}
                                 onSubmissionSuccess={() => {
-                                    setScannedDrugData(null); // Clear data after successful manual submission
-                                    setEntryMode("qr"); // Optionally switch back to QR after manual submission
-                                    dispatch(getAllDrugs()); // Refresh drugs after manual entry
+                                    setScannedDrugData(null);
+                                    setEntryMode("qr");
+                                    dispatch(getAllDrugs());
+                                    setHighlightedDrugId(null);
+                                    setIsEditing(false);
+                                    setIsQRScanning(false);
                                 }}
                             />
                         </motion.div>
@@ -286,10 +331,14 @@ const InventoryPage = () => {
                                 <th className="px-4 py-3">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-700">
+                        <tbody ref={tableBodyRef} className="divide-y divide-gray-700">
                             {paginated.length > 0 ? (
                                 paginated.map((item) => (
-                                    <tr key={item._id} className="hover:bg-gray-800">
+                                    <tr
+                                        key={item._id}
+                                        data-id={item._id}
+                                        className={`hover:bg-gray-800 ${highlightedDrugId === item._id ? 'bg-blue-900/50 transition-all duration-500 ease-in-out' : ''}`}
+                                    >
                                         <td className="px-4 py-3">{item.drugName}</td>
                                         <td className="px-4 py-3">{item.batchNumber}</td>
                                         <td className="px-4 py-3">{item.currentStock}</td>
@@ -356,6 +405,45 @@ const InventoryPage = () => {
                     ))}
                 </div>
             </main>
+
+            {/* Custom Confirmation Modal */}
+            <AnimatePresence>
+                {showConfirmModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            exit={{ scale: 0.9, y: 20 }}
+                            className="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700 max-w-sm w-full text-center"
+                        >
+                            <AlertCircle className="text-red-500 mx-auto mb-4" size={48} />
+                            <h3 className="text-xl font-semibold text-white mb-2">Confirm Deletion</h3>
+                            <p className="text-gray-300 mb-6">
+                                Are you sure you want to delete this drug from inventory? This action cannot be undone.
+                            </p>
+                            <div className="flex justify-center gap-4">
+                                <button
+                                    onClick={cancelDelete}
+                                    className="px-5 py-2 rounded-md bg-gray-600 text-white hover:bg-gray-700 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmDelete}
+                                    className="px-5 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

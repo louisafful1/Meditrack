@@ -54,9 +54,10 @@ const inventorySchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true, // includes createdAt and updatedAt automatically
+    timestamps: true, 
   }
 );
+inventorySchema.index({ drugName: 1, batchNumber: 1, facility: 1 }, { unique: true });
 
 const Inventory = mongoose.model("Inventory", inventorySchema);
 

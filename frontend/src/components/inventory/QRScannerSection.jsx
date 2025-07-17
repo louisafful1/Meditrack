@@ -1,93 +1,81 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react"; // Removed useState as scanning is now a prop
 import { QrCode, ScanLine, X } from "lucide-react";
 import { Html5Qrcode } from "html5-qrcode";
 import { motion } from "framer-motion";
 import { toast } from "react-toastify";
 
-const QRScannerSection = ({ onSwitchToManual, onResult }) => {
-    const [scanning, setScanning] = useState(false);
+// isScanning and setIsScanning are now props, controlled by the parent component (InventoryPage)
+const QRScannerSection = ({ onSwitchToManual, onResult, isScanning, setIsScanning }) => {
     const html5QrCodeRef = useRef(null); // Ref to store the Html5Qrcode instance
+
+    // Function to stop and clear the scanner instance
+    const stopAndClearScanner = async () => {
+        const qrCodeScanner = html5QrCodeRef.current;
+        if (qrCodeScanner) {
+            try {
+                if (qrCodeScanner.isScanning) {
+                    await qrCodeScanner.stop();
+                }
+                await qrCodeScanner.clear(); // Explicitly clear resources
+            } catch (err) {
+                // Filter out known harmless errors from html5-qrcode
+                if (err && err.message &&
+                   !err.message.includes("Code scanner not running") &&
+                   !err.message.includes("Cannot transition to a new state") &&
+                   !err.message.includes("No stream to stop") &&
+                   !err.message.includes("Cannot clear while scan is ongoing") &&
+                   !err.message.includes("removeChild")) {
+                }
+            } finally {
+                html5QrCodeRef.current = null; // Ensure ref is nullified after attempt
+            }
+        }
+    };
 
     // Handler for the "Tap to scan" button
     const handleStartButtonClick = () => {
-        setScanning(true); // This will trigger the useEffect below to start the scanner
+        setIsScanning(true); // Update the parent's state to start scanning
     };
 
     // Handler for the "Stop Scanning" button
     const handleStopButtonClick = async () => {
-        const qrCodeScanner = html5QrCodeRef.current;
-        if (qrCodeScanner && qrCodeScanner.isScanning) { // Check if it's currently scanning
-            try {
-                // Only stop the camera, do not clear the instance here.
-                // The full 'clear' will happen in useEffect cleanup on component unmount.
-                await qrCodeScanner.stop();
-                console.log("QR Code camera stopped by Stop button.");
-            } catch (err) {
-                console.error("Error stopping QR camera from Stop button:", err);
-                // Ignore "Code scanner not running" error as it's expected if already stopped
-                if (!err.message.includes("Code scanner not running")) {
-                    toast.error(`Failed to stop QR camera: ${err.message || 'Unknown error'}`);
-                }
-            }
-        }
-        setScanning(false); // Update UI state
+        await stopAndClearScanner(); // Call the dedicated stop and clear function
+        setIsScanning(false); // Update the parent's state to stop scanning
     };
 
     // useEffect to manage the lifecycle of the Html5Qrcode scanner
     useEffect(() => {
-        const qrRegionId = "qr-reader"; // ID of the HTML element where the camera feed will be rendered
-        let scannerInstance = null; // Local variable for the Html5Qrcode instance for this effect run
+        const qrRegionId = "qr-reader";
 
         const startScanner = async () => {
-            // Only create a new instance if one doesn't already exist in the ref
+            // Only create a new instance if one doesn't already exist
             if (!html5QrCodeRef.current) {
-                scannerInstance = new Html5Qrcode(qrRegionId);
-                html5QrCodeRef.current = scannerInstance; // Store in ref
-            } else {
-                scannerInstance = html5QrCodeRef.current; // Use existing instance
+                const newScannerInstance = new Html5Qrcode(qrRegionId);
+                html5QrCodeRef.current = newScannerInstance;
             }
 
             try {
-                await scannerInstance.start( // Use the local instance
-                    { facingMode: "environment" }, // Prefer the rear camera
+                await html5QrCodeRef.current.start(
+                    { facingMode: "environment" },
                     {
-                        fps: 10, // Frames per second to scan
-                        qrbox: { width: 250, height: 250 }, // Size of the QR scanning box
+                        fps: 10,
+                        qrbox: { width: 250, height: 250 },
                     },
-                    // Success callback: when a QR code is detected
-                    async (decodedText) => {
-                        console.log("✅ QR Code Detected:", decodedText);
-                        toast.success("QR Code detected!");
+                    (decodedText) => {
                         onResult && onResult(decodedText); // Pass the decoded text to the parent component
-
-                        // Stop the scanner immediately upon successful scan
-                        const currentScanner = html5QrCodeRef.current;
-                        if (currentScanner && currentScanner.isScanning) { // Use .isScanning property
-                            try {
-                                await currentScanner.stop();
-                                console.log("QR Code camera stopped after successful scan.");
-                            } catch (err) {
-                                console.error("Error stopping QR camera after scan:", err);
-                            }
-                        }
-                        setScanning(false); // Update UI state after scan
+                        // CRITICAL: After a successful scan, explicitly tell the parent to stop scanning.
+                        // This will cause this component to re-render with isScanning=false,
+                        // triggering the cleanup in the useEffect's return function.
+                        setIsScanning(false);
                     },
-                    // Error callback for continuous scanning (when no QR code is found or minor stream issues)
                     (errorMessage) => {
-                        // console.log("No QR code detected or scanning error (minor):", errorMessage);
+                        // Minor errors, no toast for these continuous scan errors
                     }
                 );
-                console.log("QR Code scanner started successfully.");
             } catch (err) {
-                // This catch block handles errors that prevent the scanner from starting at all.
-                console.error("QR Scanner Start Failed (Critical):", err);
-                setScanning(false); // Reset scanning state on failure
-                // If the instance failed to start, ensure it's removed from ref if it was the one we just tried to use
-                if (html5QrCodeRef.current === scannerInstance) {
-                    html5QrCodeRef.current = null;
-                }
+                setIsScanning(false); // Reset parent's scanning state on failure
+                await stopAndClearScanner(); // Attempt to clean up even if start failed
 
-                // Provide user-friendly feedback based on the error type
                 if (err.name === "NotAllowedError") {
                     toast.error("Camera access denied. Please grant camera permissions in your browser settings.");
                 } else if (err.name === "NotFoundError") {
@@ -97,53 +85,37 @@ const QRScannerSection = ({ onSwitchToManual, onResult }) => {
                 } else if (err.name === "OverconstrainedError") {
                     toast.error("Camera constraints not supported by device. Try a different camera or browser.");
                 } else {
-                    toast.error(`Failed to start QR scanner: ${err.message || 'Unknown error'}`);
+                    // Only show a generic "Failed to start" for truly unhandled critical errors
+                    // AND if the error message is NOT one of the common internal html5-qrcode warnings
+                    if (err && err.message &&
+                        !err.message.includes("Cannot transition to a new state") &&
+                        !err.message.includes("No stream to stop") &&
+                        !err.message.includes("removeChild") &&
+                        !err.message.includes("Code scanner not running")) {
+                        toast.error(`Failed to start QR scanner: ${err.message || 'Unknown error'}`);
+                    } else {
+                    }
                 }
             }
         };
 
-        // Effect logic based on 'scanning' state
-        if (scanning) {
+        // If isScanning prop is true, start the scanner
+        if (isScanning) {
             startScanner();
         }
 
-        // Cleanup function for the effect: runs when component unmounts or `scanning` changes to false
+        // Cleanup function for the effect: runs when component unmounts or `isScanning` prop changes to false
         return () => {
-            // Capture the current value of the ref at the start of cleanup
-            const qrCodeScannerToClean = html5QrCodeRef.current;
-
-            // Only proceed if a scanner instance actually exists in the ref
-            if (qrCodeScannerToClean) {
-                // IMPORTANT: Nullify the ref immediately so no other concurrent cleanup tries to use it
-                html5QrCodeRef.current = null;
-
-                // Stop the scanner if it's currently scanning
-                // Use Promise.resolve() to ensure .stop() returns a Promise, even if it doesn't always
-                Promise.resolve(qrCodeScannerToClean.isScanning ? qrCodeScannerToClean.stop() : null)
-                    .then(() => {
-                        console.log("QR Code camera stopped in cleanup (if it was scanning).");
-                        // Always attempt to clear resources after stop (or stop error)
-                        // Use Promise.resolve() for clear() as well
-                        return Promise.resolve(qrCodeScannerToClean.clear());
-                    })
-                    .then(() => {
-                        console.log("QR Code scanner resources cleared in cleanup.");
-                    })
-                    .catch(e => {
-                        // This catch block handles errors from both stop() and clear()
-                        console.error("Error during QR scanner cleanup:", e);
-                        // Avoid showing toast for common "not running" errors during cleanup
-                        if (!e.message.includes("Code scanner not running") && !e.message.includes("Cannot clear while scan is ongoing")) {
-                            toast.error(`Failed to fully clean up QR scanner: ${e.message || 'Unknown error'}`);
-                        }
-                    });
-            }
+            // This acts as a final safety net, ensuring resources are released
+            // when the component unmounts or the `isScanning` prop becomes false.
+            stopAndClearScanner();
         };
-    }, [scanning, onResult]); // onResult is a prop, include it in dependencies if its identity can change
+    }, [isScanning, onResult, setIsScanning]); // Added setIsScanning to dependencies
 
     return (
         <div className="bg-gray-800 bg-opacity-50 backdrop-blur-md p-8 rounded-xl shadow-md text-center text-white border border-gray-700 w-full">
-            {!scanning ? (
+            {/* Render based on the isScanning prop */}
+            {!isScanning ? (
                 <div className="flex flex-col items-center justify-center">
                     <div className="bg-indigo-500 p-4 rounded-full mb-4">
                         <QrCode size={32} />
@@ -174,7 +146,6 @@ const QRScannerSection = ({ onSwitchToManual, onResult }) => {
                 </div>
             ) : (
                 <div>
-                    {/* This is where the Html5Qrcode scanner will render the video feed */}
                     <div id="qr-reader" className="w-full mx-auto max-w-sm"></div>
                     <button
                         onClick={handleStopButtonClick}
