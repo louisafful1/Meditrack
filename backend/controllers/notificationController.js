@@ -11,12 +11,13 @@ import mongoose from "mongoose";
 // @route   GET /api/notifications
 // @access  Private
 const getNotifications = asyncHandler(async (req, res) => {
-  const { facilityId, userId, isRead, type, limit = 50, page = 1 } = req.query;
-
+  const { userId, isRead, type, limit = 50, page = 1 } = req.query;
+    const userFacilityId = req.user.facility && typeof req.user.facility === 'object' ? req.user.facility._id : req.user.facility;
+    
   let filter = {};
 
-  if (facilityId) {
-    filter.facility = facilityId;
+  if (userFacilityId) {
+    filter.facility = userFacilityId;
   }
 
   if (userId) {
