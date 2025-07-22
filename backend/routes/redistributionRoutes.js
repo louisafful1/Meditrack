@@ -17,7 +17,7 @@ redistributionroutes
   .get(protect, getRedistributions);
 
   redistributionroutes.put('/:id/approve', protect, approveRedistribution);
-  redistributionroutes.put('/decline/:id', protect, declineRedistribution);
+  redistributionroutes.put('/:id/decline', protect, declineRedistribution);
 redistributionroutes.put("/:id", protect, updateRedistributionStatus);
 
 export default redistributionroutes;

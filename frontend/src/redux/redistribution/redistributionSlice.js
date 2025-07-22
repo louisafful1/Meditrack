@@ -1,10 +1,11 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import redistributionService from './redistributionService'; 
-import { toast } from 'react-toastify';
+import redistributionService from './redistributionService';
+// Removed 'toast' import from here. Toasts should be handled in components.
+// import { toast } from 'react-toastify'; // This line is now REMOVED
 
 const initialState = {
     redistributions: [],
-    suggestions: [],   
+    suggestions: [],
     isLoading: false,
     isError: false,
     isSuccess: false,
@@ -22,7 +23,6 @@ export const createRedistribution = createAsyncThunk(
                 (error.response && error.response.data && error.response.data.message) ||
                 error.message ||
                 error.toString();
-            toast.error(message);
             return thunkAPI.rejectWithValue(message);
         }
     }
@@ -39,7 +39,6 @@ export const getRedistributions = createAsyncThunk(
                 (error.response && error.response.data && error.response.data.message) ||
                 error.message ||
                 error.toString();
-            toast.error(message);
             return thunkAPI.rejectWithValue(message);
         }
     }
@@ -51,12 +50,12 @@ export const approveRedistribution = createAsyncThunk(
     async (redistributionId, thunkAPI) => {
         try {
             return await redistributionService.approveRedistribution(redistributionId);
-        } catch (error) {
+        }
+        catch (error) {
             const message =
                 (error.response && error.response.data && error.response.data.message) ||
                 error.message ||
                 error.toString();
-            toast.error(message);
             return thunkAPI.rejectWithValue(message);
         }
     }
@@ -73,7 +72,6 @@ export const declineRedistribution = createAsyncThunk(
                 (error.response && error.response.data && error.response.data.message) ||
                 error.message ||
                 error.toString();
-            toast.error(message);
             return thunkAPI.rejectWithValue(message);
         }
     }
@@ -90,46 +88,23 @@ export const updateRedistributionStatus = createAsyncThunk(
                 (error.response && error.response.data && error.response.data.message) ||
                 error.message ||
                 error.toString();
-            toast.error(message);
             return thunkAPI.rejectWithValue(message);
         }
     }
 );
 
-// Async Thunk for getting redistribution suggestions
+// Async Thunk for getting AI Redistribution Suggestions
 export const getAIRedistributionSuggestions = createAsyncThunk(
     "redistribution/getSuggestions",
     async (_, thunkAPI) => {
         try {
-            return await redistributionService.getAIRedistributionSuggestions();
+            const response = await redistributionService.getAIRedistributionSuggestions();
+            return response;
         } catch (error) {
             const message =
                 (error.response && error.response.data && error.response.data.message) ||
                 error.message ||
                 error.toString();
-            toast.error(message);
-            return thunkAPI.rejectWithValue(message);
-        }
-    }
-);
-
-// --- New Thunk for AI Redistribution Suggestions ---
-export const getAISuggestions = createAsyncThunk(
-    'redistribution/getSuggestions',
-    async (_, thunkAPI) => {
-        try {
-            // Call the new service function to fetch AI suggestions
-            const response = await redistributionService.getAISuggestions();
-            toast.success('AI suggestions loaded!');
-            return response;
-        } catch (error) {
-            const message =
-                (error.response &&
-                    error.response.data &&
-                    error.response.data.message) ||
-                error.message ||
-                error.toString();
-            toast.error(`Failed to load AI suggestions: ${message}`);
             return thunkAPI.rejectWithValue(message);
         }
     }
@@ -143,9 +118,14 @@ const redistributionSlice = createSlice({
         RESET_REDISTRIBUTION(state) {
             state.redistributions = [];
             state.suggestions = [];
+            state.isLoading = false;
             state.isError = false;
             state.isSuccess = false;
-            state.isLoading = false;
+            state.message = "";
+        },
+        RESET_TOAST_STATE: (state) => {
+            state.isError = false;
+            state.isSuccess = false;
             state.message = "";
         },
     },
@@ -154,14 +134,15 @@ const redistributionSlice = createSlice({
             // Create Redistribution
             .addCase(createRedistribution.pending, (state) => {
                 state.isLoading = true;
+                state.isError = false;
+                state.isSuccess = false;
+                state.message = "";
             })
             .addCase(createRedistribution.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                state.redistributions.push(action.payload); 
+                state.redistributions.push(action.payload);
                 state.message = "Redistribution request created successfully!";
-                toast.success(state.message)
-
             })
             .addCase(createRedistribution.rejected, (state, action) => {
                 state.isLoading = false;
@@ -172,13 +153,16 @@ const redistributionSlice = createSlice({
             // Get All Redistributiions
             .addCase(getRedistributions.pending, (state) => {
                 state.isLoading = true;
+                state.isError = false;
+                state.isSuccess = false;
+                state.message = "";
             })
             .addCase(getRedistributions.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
                 state.redistributions = action.payload;
-                state.message = "Redistribution requests fetched successfully!";
-                toast.success(state.message)
+                // IMPORTANT: REMOVED THIS LINE TO PREVENT UNWANTED TOAST ON PAGE LOAD
+                // state.message = "Redistribution requests fetched successfully!";
             })
             .addCase(getRedistributions.rejected, (state, action) => {
                 state.isLoading = false;
@@ -190,11 +174,13 @@ const redistributionSlice = createSlice({
             // Approve Redistribution
             .addCase(approveRedistribution.pending, (state) => {
                 state.isLoading = true;
+                state.isError = false;
+                state.isSuccess = false;
+                state.message = "";
             })
             .addCase(approveRedistribution.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                // Update the status of the approved item in the state
                 const index = state.redistributions.findIndex(
                     (req) => req._id === action.payload.redistribution._id
                 );
@@ -202,7 +188,6 @@ const redistributionSlice = createSlice({
                     state.redistributions[index] = action.payload.redistribution;
                 }
                 state.message = "Redistribution approved successfully!";
-                toast.success(state.message);
             })
             .addCase(approveRedistribution.rejected, (state, action) => {
                 state.isLoading = false;
@@ -213,11 +198,13 @@ const redistributionSlice = createSlice({
             // Decline Redistribution
             .addCase(declineRedistribution.pending, (state) => {
                 state.isLoading = true;
+                state.isError = false;
+                state.isSuccess = false;
+                state.message = "";
             })
             .addCase(declineRedistribution.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                // Update the status of the declined item in the state
                 const index = state.redistributions.findIndex(
                     (req) => req._id === action.payload.redistribution._id
                 );
@@ -225,7 +212,6 @@ const redistributionSlice = createSlice({
                     state.redistributions[index] = action.payload.redistribution;
                 }
                 state.message = "Redistribution declined successfully!";
-                toast.success(state.message);
             })
             .addCase(declineRedistribution.rejected, (state, action) => {
                 state.isLoading = false;
@@ -236,11 +222,13 @@ const redistributionSlice = createSlice({
             // Update Redistribution Status (generic)
             .addCase(updateRedistributionStatus.pending, (state) => {
                 state.isLoading = true;
+                state.isError = false;
+                state.isSuccess = false;
+                state.message = "";
             })
             .addCase(updateRedistributionStatus.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                // Update the status of the updated item in the state
                 const index = state.redistributions.findIndex(
                     (req) => req._id === action.payload._id
                 );
@@ -248,7 +236,6 @@ const redistributionSlice = createSlice({
                     state.redistributions[index] = action.payload;
                 }
                 state.message = "Redistribution status updated successfully!";
-                toast.success(state.message);
             })
             .addCase(updateRedistributionStatus.rejected, (state, action) => {
                 state.isLoading = false;
@@ -259,21 +246,25 @@ const redistributionSlice = createSlice({
             // Get AI Suggestions
             .addCase(getAIRedistributionSuggestions.pending, (state) => {
                 state.isLoading = true;
+                state.isError = false;
+                state.isSuccess = false;
+                state.message = "";
             })
             .addCase(getAIRedistributionSuggestions.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                state.suggestions = action.payload; 
+                state.suggestions = action.payload;
+                state.message = "AI suggestions generated successfully!"; // Keep this message for explicit generation
             })
             .addCase(getAIRedistributionSuggestions.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;
-                state.suggestions = []; 
+                state.suggestions = [];
             });
     },
 });
 
-export const { RESET_REDISTRIBUTION } = redistributionSlice.actions;
+export const { RESET_REDISTRIBUTION, RESET_TOAST_STATE } = redistributionSlice.actions;
 
 export default redistributionSlice.reducer;

@@ -4,7 +4,11 @@ const notificationSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ["DRUG_EXPIRING", "DRUG_EXPIRED", "LOW_STOCK", "OUT_OF_STOCK"],
+      enum: ["DRUG_EXPIRING", "DRUG_EXPIRED", 
+             "LOW_STOCK", "OUT_OF_STOCK",  
+             "REDISTRIBUTION_CREATED","REDISTRIBUTION_DECLINED",
+             "REDISTRIBUTION_APPROVED", "REDISTRIBUTION_COMPLETED"
+            ],
       required: true,
     },
     title: {
@@ -31,6 +35,11 @@ const notificationSchema = new mongoose.Schema(
     expiryDate: {
       type: Date,
     },
+     redistributionId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Redistribution", 
+            required: false,
+        },
     facility: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Facility",
@@ -52,6 +61,7 @@ const notificationSchema = new mongoose.Schema(
     metadata: {
       daysToExpiry: Number,
       currentStock: Number,
+      redistributionQuantity: Number,
     },
   },
   {

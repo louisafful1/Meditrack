@@ -48,14 +48,51 @@ const getStatusIcon = (status) => {
     }
 };
 
+// --- Custom Confirmation Modal Component ---
+// This can be moved to its own file (e.g., components/common/ConfirmationModal.jsx)
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-gray-800 p-6 rounded-lg shadow-xl border border-gray-700 max-w-sm w-full"
+            >
+                <h3 className="text-xl font-semibold text-white mb-4">{title}</h3>
+                <p className="text-gray-300 mb-6">{message}</p>
+                <div className="flex justify-end gap-3">
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+                    >
+                        {confirmText}
+                    </button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+
 const RedistributionPage = () => {
     const dispatch = useDispatch();
     const formRef = useRef(null);
+    const toastIdRef = useRef(null);
+
 
     // Selectors for Redistribution data
     const {
         redistributions,
-        suggestions,
+        suggestions: reduxSuggestions,
         isLoading: redistLoading,
         isError: redistError,
         message: redistMessage,
@@ -80,25 +117,8 @@ const RedistributionPage = () => {
 
     const { user } = useSelector((state) => state.auth);
 
-    // --- DEBUGGING LOGS (CRITICAL FOR DIAGNOSIS) ---
-    console.group("RedistributionPage Debugging - Initial State");
-    console.log("1. Frontend - User object from Redux:", user);
-    if (user) {
-        console.log("2. Frontend - User facility ID (user.facility):", user.facility);
-    } else {
-        console.log("2. Frontend - User object is null or undefined. Cannot determine user's facility.");
-    }
-    console.log("3. Frontend - Inventory Drugs array from Redux:", inventoryDrugs);
-    console.log("4. Frontend - Drugs Loading state:", drugsLoading);
-    console.log("5. Frontend - Drugs Error state:", drugsError);
-    console.log("6. Frontend - Drugs Error Message:", drugsMessage);
-    console.log("7. Frontend - AI Suggestions array:", suggestions);
-    console.log("8. Frontend - Redistribution/AI Loading state:", redistLoading);
-    console.log("9. Frontend - Redistribution/AI Error state:", redistError);
-    console.log("10. Frontend - Raw Redistrbutions array from Redux (before filter):", redistributions);
-    console.groupEnd();
-    // --- END DEBUGGING LOGS ---
-
+    // NEW STATE: Local state for AI suggestions, potentially loaded from localStorage
+    const [localSuggestions, setLocalSuggestions] = useState([]);
 
     // Form states
     const [selectedDrug, setSelectedDrug] = useState('');
@@ -110,13 +130,33 @@ const RedistributionPage = () => {
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterType, setFilterType] = useState('all');
 
-    // Fetch initial data on component mount
+    // --- State for Custom Confirmation Modal ---
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [confirmAction, setConfirmAction] = useState(() => () => {}); // Function to call on confirm
+    const [confirmTitle, setConfirmTitle] = useState('');
+    const [confirmMessage, setConfirmMessage] = useState('');
+    const [confirmButtonText, setConfirmButtonText] = useState('');
+    const [requestIdForConfirmation, setRequestIdForConfirmation] = useState(null); // Store ID for action
+
+
+    // Fetch initial data on component mount and load suggestions from localStorage
     useEffect(() => {
         dispatch(getRedistributions());
         dispatch(getAllDrugs());
         dispatch(getAllFacilities());
 
-        // Cleanup
+        // Load suggestions from localStorage on initial mount
+        try {
+            const storedSuggestions = localStorage.getItem('aiRedistributionSuggestions');
+            if (storedSuggestions) {
+                setLocalSuggestions(JSON.parse(storedSuggestions));
+            }
+        } catch (e) {
+            console.error("Failed to load suggestions from localStorage:", e);
+            localStorage.removeItem('aiRedistributionSuggestions'); // Clear corrupted data
+        }
+
+        // Cleanup on unmount
         return () => {
             dispatch(RESET_REDISTRIBUTION());
             dispatch(RESET_DRUG());
@@ -124,22 +164,60 @@ const RedistributionPage = () => {
         };
     }, [dispatch]);
 
-    // Handle toast messages for Redux state changes
+    // IMPORTANT: Handle toast messages for Redux state changes AND reset toast state
     useEffect(() => {
-        if (redistError) {
-            toast.error(redistMessage);
+        if (redistError && redistMessage) {
+            if (toastIdRef.current) {
+                toast.dismiss(toastIdRef.current);
+            }
+            toastIdRef.current = toast.error(redistMessage);
+        } else if (redistSuccess && redistMessage) {
+            if (toastIdRef.current) {
+                toast.dismiss(toastIdRef.current);
+            }
+            toastIdRef.current = toast.success(redistMessage);
         }
-        if (redistSuccess && redistMessage) {
-            toast.success(redistMessage);
-        }
-        // Handle drug and facility errors as well
-        if (drugsError) {
+
+        return () => {
+            if (toastIdRef.current) {
+                toast.dismiss(toastIdRef.current);
+            }
+        };
+
+    }, [redistError, redistMessage, redistSuccess, dispatch]);
+
+    // Handle drug and facility errors (if they also have messages that cause duplicate toasts,
+    useEffect(() => {
+        if (drugsError && drugsMessage) {
             toast.error(drugsMessage);
+
         }
-        if (facilitiesError) {
+    }, [drugsError, drugsMessage]);
+
+    useEffect(() => {
+        if (facilitiesError && facilitiesMessage) {
             toast.error(facilitiesMessage);
         }
-    }, [redistError, redistMessage, redistSuccess, drugsError, drugsMessage, facilitiesError, facilitiesMessage]);
+    }, [facilitiesError, facilitiesMessage]);
+
+
+    // NEW useEffect: Persist reduxSuggestions to localStorage whenever they change
+    useEffect(() => {
+        if (reduxSuggestions && reduxSuggestions.length > 0) {
+            try {
+                localStorage.setItem('aiRedistributionSuggestions', JSON.stringify(reduxSuggestions));
+                setLocalSuggestions(reduxSuggestions);
+            } catch (e) {
+                console.error("Failed to save suggestions to localStorage:", e);
+            }
+        } else if (reduxSuggestions && reduxSuggestions.length === 0 && localSuggestions.length > 0) {
+            localStorage.removeItem('aiRedistributionSuggestions');
+            setLocalSuggestions([]);
+        }
+    }, [reduxSuggestions]);
+
+    // Determine which suggestions to display: prioritize Redux suggestions if available, else local storage
+    const displaySuggestions = reduxSuggestions.length > 0 ? reduxSuggestions : localSuggestions;
 
 
     // Function to fetch AI suggestions
@@ -166,7 +244,8 @@ const RedistributionPage = () => {
             return;
         }
 
-        if (user && toFacility === user.facility) {
+        const userFacilityId = user?.facility && typeof user.facility === 'object' ? user.facility._id : user?.facility;
+        if (user && toFacility === userFacilityId) {
             toast.error('Cannot redistribute drugs to your own facility.');
             return;
         }
@@ -190,25 +269,51 @@ const RedistributionPage = () => {
         }
     };
 
-    // Handle approve/decline actions
-    const handleApprove = async (id) => {
-        if (window.confirm("Are you sure you want to APPROVE this redistribution request? This action will update inventory.")) {
+    // --- MODIFIED: Handle approve/decline actions with custom confirmation ---
+    const handleApproveClick = (id) => {
+        setRequestIdForConfirmation(id);
+        setConfirmTitle("Approve Redistribution Request");
+        setConfirmMessage("Are you sure you want to APPROVE this redistribution request? This action will update inventory.");
+        setConfirmButtonText("Approve");
+        setConfirmAction(() => async () => { // Use a functional update for state
             const resultAction = await dispatch(approveRedistribution(id));
             if (approveRedistribution.fulfilled.match(resultAction)) {
                 dispatch(getRedistributions());
                 dispatch(getAllDrugs());
             }
-        }
+        });
+        setIsConfirmModalOpen(true);
     };
 
-    const handleDecline = async (id) => {
-        if (window.confirm("Are you sure you want to DECLINE this redistribution request?")) {
+    const handleDeclineClick = (id) => {
+        setRequestIdForConfirmation(id);
+        setConfirmTitle("Decline Redistribution Request");
+        setConfirmMessage("Are you sure you want to DECLINE this redistribution request?");
+        setConfirmButtonText("Decline");
+        setConfirmAction(() => async () => { // Use a functional update for state
             const resultAction = await dispatch(declineRedistribution(id));
             if (declineRedistribution.fulfilled.match(resultAction)) {
                 dispatch(getRedistributions());
             }
-        }
+        });
+        setIsConfirmModalOpen(true);
     };
+
+    const handleConfirmAction = async () => {
+        setIsConfirmModalOpen(false); // Close modal immediately
+        if (confirmAction) {
+            await confirmAction(); // Execute the stored action
+        }
+        setRequestIdForConfirmation(null); // Clear the stored ID
+    };
+
+    const handleCloseConfirmModal = () => {
+        setIsConfirmModalOpen(false);
+        setRequestIdForConfirmation(null); // Clear the stored ID
+        setConfirmAction(() => () => {}); // Reset action
+    };
+    // --- END MODIFIED ---
+
 
     // Autofill form from AI suggestion
     const handleInitiateTransfer = (suggestion) => {
@@ -237,47 +342,28 @@ const RedistributionPage = () => {
 
     // Filter redistribution logs based on status and type (sent/received)
     const filteredRedistributions = redistributions.filter(request => {
-        console.groupCollapsed(`DEBUG FILTER: Evaluating Request ID: ${request._id}`); // Collapsed for readability
-        console.log("Request object:", request);
-        console.log("Current user:", user);
-        console.log("User facility ID:", user?.facility);
-        console.log("Filter Status:", filterStatus);
-        console.log("Filter Type:", filterType);
-
         const matchesStatus = filterStatus === 'all' || request.status === filterStatus;
-        console.log(`Matches Status (${filterStatus} === ${request.status}):`, matchesStatus);
 
-        let matchesType = true; // Default to true if no user or no specific type filter
+        let matchesType = true;
 
-        if (user) { // Only apply type filter if user is available
+        if (user) {
+            const userFacilityId = user.facility && typeof user.facility === 'object' ? user.facility._id : user.facility;
+
             if (filterType === 'sent') {
                 const fromFacilityId = request.fromFacility && typeof request.fromFacility === 'object' ? request.fromFacility._id : request.fromFacility;
-                matchesType = fromFacilityId === user.facility;
-                console.log(`Matches Type (Sent by Me): Request fromFacility ID (${fromFacilityId}) === User facility ID (${user.facility}) ->`, matchesType);
+                matchesType = fromFacilityId === userFacilityId;
             } else if (filterType === 'received') {
                 const toFacilityId = request.toFacility && typeof request.toFacility === 'object' ? request.toFacility._id : request.toFacility;
-                matchesType = toFacilityId === user.facility;
-                console.log(`Matches Type (Received by Me): Request toFacility ID (${toFacilityId}) === User facility ID (${user.facility}) ->`, matchesType);
-            } else {
-                // If filterType is 'all', show requests where either fromFacility or toFacility matches user's facility
+                matchesType = toFacilityId === userFacilityId;
+            } else { // 'all' type
                 const fromFacilityId = request.fromFacility && typeof request.fromFacility === 'object' ? request.fromFacility._id : request.fromFacility;
                 const toFacilityId = request.toFacility && typeof request.toFacility === 'object' ? request.toFacility._id : request.toFacility;
-                matchesType = (fromFacilityId === user.facility || toFacilityId === user.facility);
-                console.log(`Matches Type (All Requests for User): (from ${fromFacilityId} === ${user.facility} || to ${toFacilityId} === ${user.facility}) ->`, matchesType);
+                matchesType = (fromFacilityId === userFacilityId || toFacilityId === userFacilityId);
             }
-        } else {
-            console.log("User object not available, skipping type filter.");
         }
 
-        const finalResult = matchesStatus && matchesType;
-        console.log("Final Filter Result for this request:", finalResult);
-        console.groupEnd();
-        return finalResult;
+        return matchesStatus && matchesType;
     });
-
-    console.log("DEBUG FILTER: Final filteredRedistributions array length:", filteredRedistributions.length);
-    console.log("DEBUG FILTER: Final filteredRedistributions array content:", filteredRedistributions);
-
 
     // Determine if overall loading state is active for any relevant data
     const overallLoading = redistLoading || drugsLoading || facilitiesLoading;
@@ -306,27 +392,27 @@ const RedistributionPage = () => {
                         className="mb-6 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-md flex items-center gap-2 transition-colors duration-200"
                         disabled={redistLoading}
                     >
-                        {redistLoading && suggestions.length === 0 ? <Loader2 className="animate-spin h-5 w-5" /> : <Lightbulb size={20} />}
-                        {redistLoading && suggestions.length === 0 ? 'Getting Suggestions...' : 'Get AI Suggestions'}
+                        {redistLoading && displaySuggestions.length === 0 ? <Loader2 className="animate-spin h-5 w-5" /> : <Lightbulb size={20} />}
+                        {redistLoading && displaySuggestions.length === 0 ? 'Getting Suggestions...' : 'Get AI Suggestions'}
                     </button>
 
-                    {redistLoading && suggestions.length === 0 ? (
+                    {redistLoading && displaySuggestions.length === 0 ? (
                         <div className="flex justify-center items-center py-4">
                             <Loader2 className="animate-spin text-emerald-400" size={24} />
                             <span className="ml-3 text-lg text-gray-300">Loading AI suggestions...</span>
                         </div>
-                    ) : redistError && suggestions.length === 0 ? (
+                    ) : overallError && displaySuggestions.length === 0 ? (
                         <div className="text-center py-4 text-red-400">
-                            Error loading AI suggestions: {redistMessage}
+                            Error loading AI suggestions: {overallMessage}
                         </div>
                     ) : (
                         <ul className="space-y-4">
-                            {suggestions.length > 0 ? (
-                                suggestions.map((suggestion, index) => (
+                            {displaySuggestions.length > 0 ? (
+                                displaySuggestions.map((suggestion, index) => (
                                     <li key={index} className="bg-gray-700 p-4 rounded-lg flex items-start gap-4">
-                                        <Truck className="h-6 w-6 text-emerald-400 flex-shrink-0" />
+                                        <Truck className="h-6 w-6 text-emerald-400" />
                                         <div>
-                                            <p className="text-gray-200 font-medium">{suggestion.drugName} ({suggestion.batchNumber || 'N/A'})</p>
+                                            <p className="text-gray-200 font-medium">{suggestion.drugName} (Batch: {suggestion.batchNumber || 'N/A'})</p>
                                             <p className="text-sm text-gray-300">
                                                 Transfer <span className="font-semibold text-emerald-300">{suggestion.suggestedQuantity}</span> units
                                                 from <span className="font-semibold text-yellow-300">{suggestion.fromFacilityName || 'N/A'}</span>
@@ -385,23 +471,14 @@ const RedistributionPage = () => {
                                     ) : (
                                         inventoryDrugs
                                             .filter(drug => {
-                                                // Ensure user and user.facility exist
                                                 if (!user || !user.facility) {
-                                                    // console.log(`DEBUG FILTER (Drug Select): Skipping drug ${drug.drugName} - User or user.facility is missing.`);
                                                     return false;
                                                 }
-                                                // Get the facility ID from the drug object (handles populated object or string ID)
                                                 const drugFacilityId = drug.facility && typeof drug.facility === 'object' ? drug.facility._id : drug.facility;
+                                                const userFacilityId = user.facility && typeof user.facility === 'object' ? user.facility._id : user.facility;
 
-                                                const isFromUserFacility = drugFacilityId === user.facility;
+                                                const isFromUserFacility = drugFacilityId === userFacilityId;
                                                 const hasStock = drug.currentStock > 0;
-
-                                                // console.log(`DEBUG FILTER (Drug Select): Drug: ${drug.drugName} (ID: ${drug._id})`);
-                                                // console.log(`  - drug.facility:`, drug.facility, `(Resolved ID: ${drugFacilityId})`);
-                                                // console.log(`  - user.facility:`, user.facility);
-                                                // console.log(`  - isFromUserFacility (${drugFacilityId} === ${user.facility}):`, isFromUserFacility);
-                                                // console.log(`  - hasStock (${drug.currentStock} > 0):`, hasStock);
-                                                // console.log(`  - Final Filter Result:`, isFromUserFacility && hasStock);
 
                                                 return isFromUserFacility && hasStock;
                                             })
@@ -448,7 +525,10 @@ const RedistributionPage = () => {
                                         <option disabled>No other facilities available.</option>
                                     ) : (
                                         facilities
-                                            .filter(fac => user && fac._id !== user.facility)
+                                            .filter(fac => {
+                                                const userFacilityId = user?.facility && typeof user.facility === 'object' ? user.facility._id : user?.facility;
+                                                return user && fac._id !== userFacilityId;
+                                            })
                                             .map((fac) => (
                                                 <option key={fac._id} value={fac._id}>
                                                     {fac.name}
@@ -518,12 +598,12 @@ const RedistributionPage = () => {
                         </select>
                     </div>
 
-                    {overallLoading ? (
+                    {overallLoading && filteredRedistributions.length === 0 ? (
                         <div className="flex justify-center items-center py-10">
                             <Loader2 className="animate-spin text-blue-400" size={32} />
                             <span className="ml-3 text-lg text-gray-300">Loading redistribution logs...</span>
                         </div>
-                    ) : overallError ? (
+                    ) : overallError && filteredRedistributions.length === 0 ? (
                         <div className="text-center py-10 text-red-400">
                             Error loading redistribution logs: {overallMessage}
                         </div>
@@ -571,10 +651,10 @@ const RedistributionPage = () => {
                                                     </td>
                                                     <td className="py-2 px-3">{new Date(request.createdAt).toLocaleString()}</td>
                                                     <td className="py-2 px-3">
-                                                        {request.status === 'pending' && user && request.toFacility?._id === user.facility && (
+                                                        {request.status === 'pending' && user && request.toFacility?._id === (user.facility && typeof user.facility === 'object' ? user.facility._id : user.facility) && (
                                                             <div className="flex gap-2">
                                                                 <button
-                                                                    onClick={() => handleApprove(request._id)}
+                                                                    onClick={() => handleApproveClick(request._id)} // Changed to handleApproveClick
                                                                     className="p-1 rounded-full bg-green-600 text-white hover:bg-green-700 transition-colors"
                                                                     title="Approve Request"
                                                                     disabled={redistLoading}
@@ -582,7 +662,7 @@ const RedistributionPage = () => {
                                                                     <CheckCircle size={18} />
                                                                 </button>
                                                                 <button
-                                                                    onClick={() => handleDecline(request._id)}
+                                                                    onClick={() => handleDeclineClick(request._id)} // Changed to handleDeclineClick
                                                                     className="p-1 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors"
                                                                     title="Decline Request"
                                                                     disabled={redistLoading}
@@ -591,7 +671,7 @@ const RedistributionPage = () => {
                                                                 </button>
                                                             </div>
                                                         )}
-                                                        {request.status === 'pending' && user && request.fromFacility?._id === user.facility && (
+                                                        {request.status === 'pending' && user && request.fromFacility?._id === (user.facility && typeof user.facility === 'object' ? user.facility._id : user.facility) && (
                                                             <span className="text-gray-500 italic text-xs">Awaiting Approval</span>
                                                         )}
                                                     </td>
@@ -612,6 +692,15 @@ const RedistributionPage = () => {
                     )}
                 </motion.div>
             </main>
+            {/* Custom Confirmation Modal Render */}
+            <ConfirmationModal
+                isOpen={isConfirmModalOpen}
+                onClose={handleCloseConfirmModal}
+                onConfirm={handleConfirmAction}
+                title={confirmTitle}
+                message={confirmMessage}
+                confirmText={confirmButtonText}
+            />
         </div>
     );
 };

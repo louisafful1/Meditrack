@@ -3,55 +3,40 @@ import Inventory from '../models/inventoryModel.js';
 import Dispensation from '../models/dispensationModel.js';
 import Facility from '../models/facilityModel.js';
 import mongoose from 'mongoose';
-import axios from 'axios'; // Import axios for making HTTP requests
+import axios from 'axios';
 
-// Define a configurable threshold for "nearing expiry" in days
 const NEARING_EXPIRY_DAYS = 90;
-// Define the historical period for calculating Average Daily Consumption (ADC) in days
-const ADC_PERIOD_DAYS = 60; // Using 60 days for rolling average
+const ADC_PERIOD_DAYS = 60;
 
-// GitHub AI API configuration
 const GITHUB_AI_API_URL = 'https://models.github.ai/inference/chat/completions';
-// IMPORTANT: Ensure your .env file has OPENAI_API_KEY set to your ghp_... GitHub token
 const GITHUB_AI_API_KEY = process.env.OPENAI_API_KEY;
 
-// --- Concurrency Control for Backend Endpoint ---
-let isGeneratingSuggestions = false; // Flag to prevent multiple concurrent generations
-let lastGenerationTime = 0; // To track last successful generation
-const MIN_GENERATION_INTERVAL_MS = 1 * 60 * 1000; // 1 minute minimum interval between successful generations
+let isGeneratingSuggestions = false;
+let lastGenerationTime = 0;
+const MIN_GENERATION_INTERVAL_MS = 1 * 60 * 1000;
 
-/**
- * Calls the GitHub AI model to get detailed justifications for multiple redistribution suggestions.
- * It sends a single prompt with multiple suggestions and expects a structured JSON response.
- * Implements retry logic with exponential backoff and jitter for rate limit errors.
- * @param {Array<Object>} suggestionPrompts - An array of objects, each containing details for a suggestion.
- * @returns {Promise<Object>} A map where keys are a unique identifier for the suggestion and values are the generated justifications.
- */
 async function getLLMJustificationsBatched(suggestionPrompts) {
-    if (!GITHUB_AI_API_KEY) {
-        console.warn("GITHUB_AI_API_KEY (from OPENAI_API_KEY env var) is not set. Skipping LLM justification.");
-        // Return a map with generic reasons for all prompts if API key is missing
-        const reasonsMap = {};
-        suggestionPrompts.forEach((prompt, index) => {
-            reasonsMap[`suggestion_${index}`] = "Automated suggestion based on inventory analysis (API key missing).";
-        });
-        return reasonsMap;
-    }
+  if (!GITHUB_AI_API_KEY) {
+    console.warn("GITHUB_AI_API_KEY (from OPENAI_API_KEY env var) is not set. Skipping LLM justification.");
+    const reasonsMap = {};
+    suggestionPrompts.forEach((prompt, index) => {
+      reasonsMap[`suggestion_${index}`] = "Automated suggestion based on inventory analysis (API key missing).";
+    });
+    return reasonsMap;
+  }
 
-    if (suggestionPrompts.length === 0) {
-        return {}; // No prompts, no justifications needed
-    }
+  if (suggestionPrompts.length === 0) {
+    return {};
+  }
 
-    const maxRetries = 5; // Maximum number of retries for rate limit errors
-    const initialDelayMs = 1000; // Initial delay in milliseconds (1 second)
-    const maxDelayMs = 30000; // Maximum delay for exponential backoff (30 seconds)
-    const minGuaranteedDelayMs = 1000; // Minimum delay to ensure we don't retry immediately
+  const maxRetries = 5;
+  const initialDelayMs = 1000;
+  const maxDelayMs = 30000;
+  const minGuaranteedDelayMs = 1000;
 
-    let currentRetry = 0;
+  let currentRetry = 0;
 
-    // Construct a single, comprehensive prompt asking for structured JSON output
-    // Each suggestion will have an ID for easy mapping back
-    const userMessageContent = `You are an expert pharmaceutical supply chain manager providing practical and relatable advice on drug redistribution. Below are multiple potential drug redistribution suggestions. For each suggestion, provide a concise, professional, and actionable reason that sounds human and focuses on real-world impact like patient care, cost savings, and preventing waste. Respond with a JSON object where each key is the suggestion's 'id' and the value is an object containing the 'id' and 'reason' string.
+  const userMessageContent = `You are an expert pharmaceutical supply chain manager providing practical and relatable advice on drug redistribution. Below are multiple potential drug redistribution suggestions. For each suggestion, provide a concise, professional, and actionable reason that sounds human and focuses on real-world impact like patient care, cost savings, and preventing waste. Respond with a JSON object where each key is the suggestion's 'id' and the value is an object containing the 'id' and 'reason' string.
 
 Examples of desired output format:
 {
@@ -68,346 +53,305 @@ Target Facility: ${s.toFacilityName} (Current Stock: ${s.toStock}, Reorder Level
 Suggested Quantity: ${s.suggestedQuantity}`).join('\n')}
 `;
 
-    while (currentRetry < maxRetries) {
-        try {
-            const response = await axios.post(GITHUB_AI_API_URL, {
-                model: "openai/gpt-4.1",
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are an expert pharmaceutical supply chain manager providing practical and relatable advice on drug redistribution. Your goal is to explain *why* a transfer is beneficial, focusing on real-world impact like patient care, cost savings, and preventing waste. Make your reasons sound human, actionable, and easy to understand for facility managers. Respond only with a JSON object, where each key is a suggestion ID and the value is an object containing 'id' and 'reason' fields. Do not include any other text or formatting outside the JSON."
-                    },
-                    {
-                        role: "user",
-                        content: userMessageContent
-                    }
-                ],
-                max_tokens: 1000, // Increased max_tokens for multiple reasons
-                temperature: 0.7,
-                response_format: { type: "json_object" } // Request JSON object output
-            }, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${GITHUB_AI_API_KEY}`
-                }
-            });
-
-            if (response.data && response.data.choices && response.data.choices.length > 0) {
-                const rawContent = response.data.choices[0].message.content.trim();
-                console.log("DEBUG LLM: Raw LLM response content:", rawContent);
-                try {
-                    // The model might wrap the JSON in markdown code block, so try to extract it
-                    let jsonString = rawContent;
-                    if (rawContent.startsWith('```json')) {
-                        jsonString = rawContent.substring(7, rawContent.lastIndexOf('```')).trim();
-                    } else if (rawContent.startsWith('```')) { // Generic code block
-                        jsonString = rawContent.substring(3, rawContent.lastIndexOf('```')).trim();
-                    }
-
-                    const parsedReasons = JSON.parse(jsonString);
-                    console.log("DEBUG LLM: Parsed LLM response JSON:", parsedReasons);
-                    const reasonsMap = {};
-                    // Iterate over the keys of the parsed object
-                    for (const key in parsedReasons) {
-                        if (parsedReasons.hasOwnProperty(key)) {
-                            const item = parsedReasons[key];
-                            // The LLM is returning { "suggestion_0": { id: "suggestion_0", reason: "..." } }
-                            // So we need to access item.reason, and the key is the id we want to map to.
-                            if (item && item.reason) {
-                                reasonsMap[key] = item.reason;
-                            }
-                        }
-                    }
-                    console.log("DEBUG LLM: Final reasonsMap:", reasonsMap);
-                    return reasonsMap;
-                } catch (parseError) {
-                    console.error("Failed to parse LLM JSON response:", parseError, "Raw content:", rawContent);
-                    // Fallback to generic reasons if parsing fails
-                    const reasonsMap = {};
-                    suggestionPrompts.forEach((prompt, index) => {
-                        reasonsMap[`suggestion_${index}`] = "Automated suggestion based on inventory analysis (LLM response parsing failed).";
-                    });
-                    return reasonsMap;
-                }
-            } else {
-                console.warn("LLM response structure unexpected or empty:", response.data);
-                const reasonsMap = {};
-                suggestionPrompts.forEach((prompt, index) => {
-                    reasonsMap[`suggestion_${index}`] = "Automated suggestion based on inventory analysis (LLM response incomplete).";
-                });
-                return reasonsMap;
-            }
-        } catch (error) {
-            if (error.response && error.response.status === 429) {
-                currentRetry++;
-                let delayMs = initialDelayMs * Math.pow(2, currentRetry - 1);
-                const retryAfterHeader = error.response.headers['retry-after'];
-                if (retryAfterHeader) {
-                    const parsedRetryAfter = parseInt(retryAfterHeader, 10);
-                    if (!isNaN(parsedRetryAfter)) {
-                        delayMs = Math.max(delayMs, parsedRetryAfter * 1000);
-                    }
-                }
-                delayMs = Math.max(delayMs, minGuaranteedDelayMs);
-                const jitter = Math.random() * 500;
-                delayMs = Math.min(maxDelayMs, delayMs + jitter);
-
-                console.warn(`Rate limit hit. Retrying in ${delayMs / 1000} seconds... (Attempt ${currentRetry}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, delayMs));
-            } else {
-                console.error("Error calling GitHub AI API:", error.response ? error.response.data : error.message);
-                const reasonsMap = {};
-                suggestionPrompts.forEach((prompt, index) => {
-                    reasonsMap[`suggestion_${index}`] = `Automated suggestion based on inventory analysis (LLM error: ${error.response?.status || 'network error'}).`;
-                });
-                return reasonsMap;
-            }
+  while (currentRetry < maxRetries) {
+    try {
+      const response = await axios.post(GITHUB_AI_API_URL, {
+        model: "openai/gpt-4.1",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert pharmaceutical supply chain manager providing practical and relatable advice on drug redistribution. Your goal is to explain *why* a transfer is beneficial, focusing on real-world impact like patient care, cost savings, and preventing waste. Make your reasons sound human, actionable, and easy to understand for facility managers. Respond only with a JSON object, where each key is a suggestion ID and the value is an object containing 'id' and 'reason' fields. Do not include any other text or formatting outside the JSON."
+          },
+          {
+            role: "user",
+            content: userMessageContent
+          }
+        ],
+        max_tokens: 1000,
+        temperature: 0.7,
+        response_format: { type: "json_object" }
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GITHUB_AI_API_KEY}`
         }
-    }
+      });
 
-    // This block is reached only if all retries are exhausted
-    console.error("Failed to get LLM justifications after all retries due to persistent API issues.");
-    const reasonsMap = {};
-    suggestionPrompts.forEach((prompt, index) => {
-        reasonsMap[`suggestion_${index}`] = "Automated suggestion based on inventory analysis (LLM temporarily unavailable due to high demand).";
-    });
-    return reasonsMap;
+      if (response.data && response.data.choices && response.data.choices.length > 0) {
+        const rawContent = response.data.choices[0].message.content.trim();
+        console.log("DEBUG LLM: Raw LLM response content:", rawContent);
+        try {
+          let jsonString = rawContent;
+          if (rawContent.startsWith('```json')) {
+            jsonString = rawContent.substring(7, rawContent.lastIndexOf('```')).trim();
+          } else if (rawContent.startsWith('```')) {
+            jsonString = rawContent.substring(3, rawContent.lastIndexOf('```')).trim();
+          }
+
+          const parsedReasons = JSON.parse(jsonString);
+          console.log("DEBUG LLM: Parsed LLM response JSON:", parsedReasons);
+          const reasonsMap = {};
+          for (const key in parsedReasons) {
+            if (parsedReasons.hasOwnProperty(key)) {
+              const item = parsedReasons[key];
+              if (item && item.reason) {
+                reasonsMap[key] = item.reason;
+              }
+            }
+          }
+          console.log("DEBUG LLM: Final reasonsMap:", reasonsMap);
+          return reasonsMap;
+        } catch (parseError) {
+          console.error("Failed to parse LLM JSON response:", parseError, "Raw content:", rawContent);
+          const reasonsMap = {};
+          suggestionPrompts.forEach((prompt, index) => {
+            reasonsMap[`suggestion_${index}`] = "Automated suggestion based on inventory analysis (LLM response parsing failed).";
+          });
+          return reasonsMap;
+        }
+      } else {
+        console.warn("LLM response structure unexpected or empty:", response.data);
+        const reasonsMap = {};
+        suggestionPrompts.forEach((prompt, index) => {
+          reasonsMap[`suggestion_${index}`] = "Automated suggestion based on inventory analysis (LLM response incomplete).";
+        });
+        return reasonsMap;
+      }
+    } catch (error) {
+      if (error.response && error.response.status === 429) {
+        currentRetry++;
+        let delayMs = initialDelayMs * Math.pow(2, currentRetry - 1);
+        const retryAfterHeader = error.response.headers['retry-after'];
+        if (retryAfterHeader) {
+          const parsedRetryAfter = parseInt(retryAfterHeader, 10);
+          if (!isNaN(parsedRetryAfter)) {
+            delayMs = Math.max(delayMs, parsedRetryAfter * 1000);
+          }
+        }
+        delayMs = Math.max(delayMs, minGuaranteedDelayMs);
+        const jitter = Math.random() * 500;
+        delayMs = Math.min(maxDelayMs, delayMs + jitter);
+
+        console.warn(`Rate limit hit. Retrying in ${delayMs / 1000} seconds... (Attempt ${currentRetry}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        console.error("Error calling GitHub AI API:", error.response ? error.response.data : error.message);
+        const reasonsMap = {};
+        suggestionPrompts.forEach((prompt, index) => {
+          reasonsMap[`suggestion_${index}`] = `Automated suggestion based on inventory analysis (LLM error: ${error.response?.status || 'network error'}).`;
+        });
+        return reasonsMap;
+      }
+    }
+  }
+
+  console.error("Failed to get LLM justifications after all retries due to persistent API issues.");
+  const reasonsMap = {};
+  suggestionPrompts.forEach((prompt, index) => {
+    reasonsMap[`suggestion_${index}`] = "Automated suggestion based on inventory analysis (LLM temporarily unavailable due to high demand).";
+  });
+  return reasonsMap;
 }
 
-
-/**
- * Calculates the average daily consumption (ADC) for drugs per facility based on recent dispensations.
- * @returns {Promise<Object>} A map where keys are 'facilityId_drugId' and values are ADC.
- */
 const calculateADCs = async () => {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - ADC_PERIOD_DAYS); // Data from last ADC_PERIOD_DAYS
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - ADC_PERIOD_DAYS);
 
-    const adcs = await Dispensation.aggregate([
-        {
-            $match: {
-                dateDispensed: { $gte: cutoffDate } // Filter for the historical period
-            }
+  const adcs = await Dispensation.aggregate([
+    {
+      $match: {
+        dateDispensed: { $gte: cutoffDate }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          drug: '$drug',
+          facility: '$facility'
         },
-        {
-            $group: {
-                _id: {
-                    drug: '$drug',
-                    facility: '$facility'
-                },
-                totalDispensed: { $sum: '$quantityDispensed' }
-            }
-        },
-        {
-            $project: {
-                _id: 0,
-                drug: '$_id.drug',
-                facility: '$_id.facility',
-                adc: { $divide: ['$totalDispensed', ADC_PERIOD_DAYS] } // Divide by the number of days
-            }
-        }
-    ]);
+        totalDispensed: { $sum: '$quantityDispensed' }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        drug: '$_id.drug',
+        facility: '$_id.facility',
+        adc: { $divide: ['$totalDispensed', ADC_PERIOD_DAYS] }
+      }
+    }
+  ]);
 
-    // Convert array of objects to a map for easier lookup: 'facilityId_drugId' -> adcValue
-    const adcMap = {};
-    adcs.forEach(item => {
-        adcMap[`${item.facility.toString()}_${item.drug.toString()}`] = item.adc;
-    });
+  const adcMap = {};
+  adcs.forEach(item => {
+    adcMap[`${item.facility.toString()}_${item.drug.toString()}`] = item.adc;
+  });
 
-    return adcMap;
+  return adcMap;
 };
 
-// @desc    Get AI-powered redistribution suggestions
-// @route   GET /api/ai/redistribution-suggestions
-// @access  Private (e.g., requires admin or supervisor role)
 export const getAiRedistributionSuggestions = asyncHandler(async (req, res) => {
-    // Ensure user is authenticated and has a facility associated
-    if (!req.user || !req.user.facility) {
-        console.warn("Unauthorized: User not authenticated or facility not found for user.");
-        return res.status(401).json({ message: "Unauthorized: User facility information missing." });
+  if (!req.user || !req.user.facility) {
+    console.warn("Unauthorized: User not authenticated or facility not found for user.");
+    return res.status(401).json({ message: "Unauthorized: User facility information missing." });
+  }
+
+  const userFacilityId = req.user.facility;
+
+  if (isGeneratingSuggestions) {
+    console.warn("AI redistribution suggestions generation already in progress. Denying new request.");
+    return res.status(429).json({ message: "AI suggestions generation is already running. Please try again shortly." });
+  }
+
+  const now = Date.now();
+  if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) {
+    console.warn("AI redistribution suggestions requested too soon after last successful generation.");
+    return res.status(429).json({ message: `Please wait ${Math.ceil((MIN_GENERATION_INTERVAL_MS - (now - lastGenerationTime)) / 1000)} seconds before requesting new AI suggestions.` });
+  }
+
+  isGeneratingSuggestions = true;
+  console.log("Starting AI redistribution suggestions generation...");
+
+  try {
+    const adcMap = await calculateADCs();
+    console.log(`Calculated ADCs for ${Object.keys(adcMap).length} drug-facility pairs.`);
+
+    const userFacilityInventory = await Inventory.find({
+      facility: userFacilityId,
+      currentStock: { $gt: 0 }
+    })
+      .populate('facility', 'name type')
+      .select('drugName currentStock expiryDate facility reorderLevel batchNumber _id');
+    console.log(`Found ${userFacilityInventory.length} inventory items in user's facility.`);
+
+    const nearingExpiryDrugs = [];
+    const nearingExpiryDate = new Date();
+    nearingExpiryDate.setDate(nearingExpiryDate.getDate() + NEARING_EXPIRY_DAYS);
+
+    for (const item of userFacilityInventory) {
+      if (item.expiryDate > new Date() && item.expiryDate <= nearingExpiryDate) {
+        const sourceFacilityADC = adcMap[`${item.facility._id.toString()}_${item._id.toString()}`] || 0;
+
+        const daysUntilExpiry = Math.ceil((item.expiryDate - new Date()) / (1000 * 60 * 60 * 24));
+
+        const sourceConsumableBeforeExpiry = sourceFacilityADC * daysUntilExpiry;
+
+        if (item.currentStock > sourceConsumableBeforeExpiry) {
+          nearingExpiryDrugs.push(item);
+        }
+      }
     }
+    console.log(`Filtered down to ${nearingExpiryDrugs.length} drugs truly in surplus and nearing expiry in user's facility.`);
 
-    const userFacilityId = req.user.facility; // Get the facility ID of the current user
+    const allFacilities = await Facility.find({ active: true }).select('_id name type');
+    console.log(`Found ${allFacilities.length} active facilities.`);
 
-    // Basic concurrency control: if a generation is already in progress, return a 429 or wait
-    if (isGeneratingSuggestions) {
-        console.warn("AI redistribution suggestions generation already in progress. Denying new request.");
-        return res.status(429).json({ message: "AI suggestions generation is already running. Please try again shortly." });
-    }
+    const potentialSuggestions = [];
+    const llmPromptsForBatch = [];
 
-    // Optional: Add a cooldown to prevent rapid successive requests even after one finishes
-    const now = Date.now();
-    if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) {
-        console.warn("AI redistribution suggestions requested too soon after last successful generation.");
-        return res.status(429).json({ message: `Please wait ${Math.ceil((MIN_GENERATION_INTERVAL_MS - (now - lastGenerationTime)) / 1000)} seconds before requesting new AI suggestions.` });
-    }
+    for (const sourceDrug of nearingExpiryDrugs) {
+      const sourceFacility = sourceDrug.facility;
+      const daysUntilExpiry = Math.ceil((sourceDrug.expiryDate - new Date()) / (1000 * 60 * 60 * 24));
+      let suggestionsCountForCurrentDrug = 0;
 
-    isGeneratingSuggestions = true; // Set flag to true at the start of generation
-    console.log("Starting AI redistribution suggestions generation...");
+      for (const targetFacility of allFacilities) {
+        if (suggestionsCountForCurrentDrug >= 3) {
+          break;
+        }
 
-    try {
-        // 1. Calculate Average Daily Consumptions (ADCs) for all facilities/drugs
-        const adcMap = await calculateADCs();
-        console.log(`Calculated ADCs for ${Object.keys(adcMap).length} drug-facility pairs.`);
+        if (sourceFacility._id.toString() === targetFacility._id.toString()) {
+          continue;
+        }
 
-        // 2. Get all inventory for the user's facility (potential source facility)
-        const userFacilityInventory = await Inventory.find({
-            facility: userFacilityId,
-            currentStock: { $gt: 0 } // Only consider items with stock
-        })
-        .populate('facility', 'name type')
-        .select('drugName currentStock expiryDate facility reorderLevel batchNumber _id');
-        console.log(`Found ${userFacilityInventory.length} inventory items in user's facility.`);
+        const targetFacilityADC = adcMap[`${targetFacility._id.toString()}_${sourceDrug._id.toString()}`];
 
-        const nearingExpiryDrugs = [];
-        const nearingExpiryDate = new Date();
-        nearingExpiryDate.setDate(nearingExpiryDate.getDate() + NEARING_EXPIRY_DAYS);
+        if (targetFacilityADC && targetFacilityADC > 0) {
+          const targetDrugInventory = await Inventory.findOne({
+            facility: targetFacility._id,
+            drugName: sourceDrug.drugName,
+          }).select('currentStock reorderLevel');
 
-        // Filter for drugs that are truly in surplus and nearing expiry at the source facility
-        for (const item of userFacilityInventory) {
-            // Check if the item is actually nearing expiry
-            if (item.expiryDate > new Date() && item.expiryDate <= nearingExpiryDate) {
-                // Get ADC for this specific drug at the source facility
-                // Note: The ADC map is based on drug _id, not inventory item _id.
-                // Assuming drug._id from inventory item is the drug ID used in dispensation
-                const sourceFacilityADC = adcMap[`${item.facility._id.toString()}_${item._id.toString()}`] || 0; // Assuming item._id is the drug ID
+          const targetCurrentStock = targetDrugInventory?.currentStock || 0;
+          const targetReorderLevel = targetDrugInventory?.reorderLevel || 0;
 
-                const daysUntilExpiry = Math.ceil((item.expiryDate - new Date()) / (1000 * 60 * 60 * 24));
+          const projectedDaysSupply = targetFacilityADC > 0 ? (targetCurrentStock / targetFacilityADC) : Infinity;
+          const needsDrug = targetCurrentStock < targetReorderLevel || projectedDaysSupply < 30;
 
-                // Calculate how much the source facility can consume before expiry
-                const sourceConsumableBeforeExpiry = sourceFacilityADC * daysUntilExpiry;
+          if (needsDrug) {
+            const quantityConsumableBeforeExpiryAtTarget = targetFacilityADC * daysUntilExpiry;
 
-                // Only add to nearingExpiryDrugs if current stock is more than what the source can consume before expiry
-                if (item.currentStock > sourceConsumableBeforeExpiry) {
-                    nearingExpiryDrugs.push(item);
-                }
+            const quantityToSuggestBasedOnNeed = Math.max(0, (targetReorderLevel * 1.5) - targetCurrentStock);
+            const quantityToSuggestBasedOnADC = Math.ceil(targetFacilityADC * 15);
+
+            const suggestedQuantity = Math.min(
+              sourceDrug.currentStock,
+              quantityConsumableBeforeExpiryAtTarget,
+              Math.max(quantityToSuggestBasedOnNeed, quantityToSuggestBasedOnADC)
+            );
+
+            if (suggestedQuantity > 0) {
+              const suggestionId = `suggestion_${potentialSuggestions.length}`;
+              potentialSuggestions.push({
+                id: suggestionId,
+                drugId: sourceDrug._id,
+                drugName: sourceDrug.drugName,
+                batchNumber: sourceDrug.batchNumber,
+                fromFacilityId: sourceFacility._id,
+                fromFacilityName: sourceFacility.name,
+                fromStock: sourceDrug.currentStock,
+                toFacilityId: targetFacility._id,
+                toFacilityName: targetFacility.name,
+                toStock: targetCurrentStock,
+                toReorderLevel: targetReorderLevel,
+                targetADC: targetFacilityADC,
+                suggestedQuantity: Math.round(suggestedQuantity),
+                daysUntilExpiry: daysUntilExpiry
+              });
+
+              llmPromptsForBatch.push({
+                id: suggestionId,
+                drugName: sourceDrug.drugName,
+                batchNumber: sourceDrug.batchNumber,
+                fromFacilityName: sourceFacility.name,
+                fromStock: sourceDrug.currentStock,
+                daysUntilExpiry: daysUntilExpiry,
+                toFacilityName: targetFacility.name,
+                toStock: targetCurrentStock,
+                toReorderLevel: targetReorderLevel,
+                targetADC: targetFacilityADC,
+                suggestedQuantity: suggestedQuantity
+              });
+              suggestionsCountForCurrentDrug++;
             }
+          }
         }
-        console.log(`Filtered down to ${nearingExpiryDrugs.length} drugs truly in surplus and nearing expiry in user's facility.`);
-
-
-        // 3. Get all facilities for context (e.g., type, location if available)
-        const allFacilities = await Facility.find({ active: true }).select('_id name type');
-        console.log(`Found ${allFacilities.length} active facilities.`);
-
-        const potentialSuggestions = [];
-        const llmPromptsForBatch = []; // Collect prompts for batched LLM call
-
-        // Iterate through nearing expiry drugs from the user's facility to find potential recipients
-        for (const sourceDrug of nearingExpiryDrugs) {
-            const sourceFacility = sourceDrug.facility; // This will now always be the user's facility
-            const daysUntilExpiry = Math.ceil((sourceDrug.expiryDate - new Date()) / (1000 * 60 * 60 * 24));
-            let suggestionsCountForCurrentDrug = 0; // Counter for suggestions for THIS drug
-
-            for (const targetFacility of allFacilities) {
-                // Limit to 3 suggestions per drug
-                if (suggestionsCountForCurrentDrug >= 3) {
-                    break; // Move to the next source drug
-                }
-
-                // Skip the source facility itself (which is now the user's facility)
-                if (sourceFacility._id.toString() === targetFacility._id.toString()) {
-                    continue;
-                }
-
-                // IMPORTANT: Ensure sourceDrug._id is used for ADC lookup, not sourceDrug.drugName
-                // ADC map key is 'facilityId_drugId'
-                const targetFacilityADC = adcMap[`${targetFacility._id.toString()}_${sourceDrug._id.toString()}`];
-
-                if (targetFacilityADC && targetFacilityADC > 0) {
-                    // Fetch target facility's current stock of this specific drug (by drugName or drugId)
-                    // Using drugName for matching, assuming drugName is unique enough or represents the same drug across facilities
-                    const targetDrugInventory = await Inventory.findOne({
-                        facility: targetFacility._id,
-                        drugName: sourceDrug.drugName, // Match by drugName
-                    }).select('currentStock reorderLevel');
-
-                    const targetCurrentStock = targetDrugInventory?.currentStock || 0;
-                    const targetReorderLevel = targetDrugInventory?.reorderLevel || 0;
-
-                    const projectedDaysSupply = targetFacilityADC > 0 ? (targetCurrentStock / targetFacilityADC) : Infinity;
-                    const needsDrug = targetCurrentStock < targetReorderLevel || projectedDaysSupply < 30; // Needs if below reorder or less than 30 days supply
-
-                    if (needsDrug) {
-                        // Calculate how much the target facility can consume before the drug expires
-                        const quantityConsumableBeforeExpiryAtTarget = targetFacilityADC * daysUntilExpiry;
-
-                        // Suggest a quantity that helps meet their need without overstocking
-                        const quantityToSuggestBasedOnNeed = Math.max(0, (targetReorderLevel * 1.5) - targetCurrentStock); // Aim for 1.5x reorder level
-                        const quantityToSuggestBasedOnADC = Math.ceil(targetFacilityADC * 15); // Suggest 15 days supply (arbitrary, can be tuned)
-
-                        const suggestedQuantity = Math.min(
-                            sourceDrug.currentStock, // Cannot suggest more than source has
-                            quantityConsumableBeforeExpiryAtTarget, // Cannot suggest more than target can consume before expiry
-                            Math.max(quantityToSuggestBasedOnNeed, quantityToSuggestBasedOnADC) // The target's calculated need
-                        );
-
-                        if (suggestedQuantity > 0) {
-                            const suggestionId = `suggestion_${potentialSuggestions.length}`; // Unique ID for mapping
-                            potentialSuggestions.push({
-                                id: suggestionId, // Store ID for mapping back
-                                drugId: sourceDrug._id,
-                                drugName: sourceDrug.drugName,
-                                batchNumber: sourceDrug.batchNumber,
-                                fromFacilityId: sourceFacility._id,
-                                fromFacilityName: sourceFacility.name,
-                                fromStock: sourceDrug.currentStock, // Add for LLM prompt
-                                toFacilityId: targetFacility._id,
-                                toFacilityName: targetFacility.name,
-                                toStock: targetCurrentStock, // Add for LLM prompt
-                                toReorderLevel: targetReorderLevel, // Add for LLM prompt
-                                targetADC: targetFacilityADC, // Add for LLM prompt
-                                suggestedQuantity: suggestedQuantity,
-                                daysUntilExpiry: daysUntilExpiry
-                            });
-
-                            // Prepare data for the batched LLM prompt
-                            llmPromptsForBatch.push({
-                                id: suggestionId,
-                                drugName: sourceDrug.drugName,
-                                batchNumber: sourceDrug.batchNumber,
-                                fromFacilityName: sourceFacility.name,
-                                fromStock: sourceDrug.currentStock,
-                                daysUntilExpiry: daysUntilExpiry,
-                                toFacilityName: targetFacility.name,
-                                toStock: targetCurrentStock,
-                                toReorderLevel: targetReorderLevel,
-                                targetADC: targetFacilityADC,
-                                suggestedQuantity: suggestedQuantity
-                            });
-                            suggestionsCountForCurrentDrug++; // Increment counter for this drug
-                        }
-                    }
-                }
-            }
-        }
-        console.log(`Identified ${potentialSuggestions.length} potential redistribution suggestions.`);
-
-        // 4. Get justifications from LLM in a single batched call
-        let reasonsMap = {};
-        if (llmPromptsForBatch.length > 0) {
-            console.log(`Calling LLM for ${llmPromptsForBatch.length} justifications...`);
-            reasonsMap = await getLLMJustificationsBatched(llmPromptsForBatch);
-            console.log("LLM justifications received.");
-        } else {
-            console.log("No potential suggestions to get LLM justifications for.");
-        }
-
-        // 5. Map reasons back to the suggestions
-        const finalSuggestions = potentialSuggestions.map(s => ({
-            ...s,
-            reason: reasonsMap[s.id] || "Automated suggestion based on inventory analysis (reason not generated).",
-            id: undefined // Remove the temporary 'id' used for LLM mapping
-        }));
-
-        console.log(`Sending ${finalSuggestions.length} final suggestions to frontend.`);
-        res.status(200).json(finalSuggestions);
-
-        lastGenerationTime = now; // Update last successful generation time
-    } catch (error) {
-        console.error("Error during AI redistribution suggestions generation:", error);
-        res.status(500).json({ message: "Failed to generate AI suggestions due to a server error.", error: error.message });
-    } finally {
-        isGeneratingSuggestions = false; // Reset flag
+      }
     }
+    console.log(`Identified ${potentialSuggestions.length} potential redistribution suggestions.`);
+
+    let reasonsMap = {};
+    if (llmPromptsForBatch.length > 0) {
+      console.log(`Calling LLM for ${llmPromptsForBatch.length} justifications...`);
+      reasonsMap = await getLLMJustificationsBatched(llmPromptsForBatch);
+      console.log("LLM justifications received.");
+    } else {
+      console.log("No potential suggestions to get LLM justifications for.");
+    }
+
+    const finalSuggestions = potentialSuggestions.map(s => ({
+      ...s,
+      reason: reasonsMap[s.id] || "Automated suggestion based on inventory analysis (reason not generated).",
+      id: undefined,
+    }));
+
+    console.log(`Sending ${finalSuggestions.length} final suggestions to frontend.`);
+    res.status(200).json(finalSuggestions);
+
+    lastGenerationTime = now;
+  } catch (error) {
+    console.error("Error during AI redistribution suggestions generation:", error);
+    res.status(500).json({ message: "Failed to generate AI suggestions due to a server error.", error: error.message });
+  } finally {
+    isGeneratingSuggestions = false;
+  }
 });

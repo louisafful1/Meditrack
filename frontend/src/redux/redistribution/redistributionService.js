@@ -25,7 +25,7 @@ const approveRedistribution = async (redistributionId) => {
 
 // Decline a Redistribution Request
 const declineRedistribution = async (redistributionId) => {
-    const response = await axios.put(`${API_URL}decline/${redistributionId}`);
+    const response = await axios.put(`${API_URL}${redistributionId}/decline`);
     return response.data;
 };
 

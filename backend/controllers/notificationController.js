@@ -38,6 +38,13 @@ const getNotifications = asyncHandler(async (req, res) => {
     .populate("facility", "name location")
     .populate("drugId", "drugName batchNumber currentStock expiryDate")
     .populate("userId", "name email")
+     .populate({
+            path: 'redistributionId',
+            populate: [
+                { path: 'fromFacility', select: 'name' }, 
+                { path: 'toFacility', select: 'name' }    
+            ]
+        })
     .sort({ createdAt: -1 })
     .limit(parseInt(limit))
     .skip(skip);
