@@ -66,7 +66,7 @@ export const createRedistribution = asyncHandler(async (req, res) => {
         action: "Requested Redistribution",
         module: "Redistribution",
         targetId: redistribution._id,
-        message: `${req.user.name} requested redistribution of ${quantity} ${inventoryItem.drugName} from ${redistribution.fromFacility.name} to ${toFacility}`,
+        message: `${req.user.name} requested redistribution of ${quantity} ${inventoryItem.drugName} to ${toFacility}`,
     });
           await createRedistributionNotification(redistribution, "REDISTRIBUTION_CREATED");
 
@@ -238,7 +238,7 @@ export const approveRedistribution = asyncHandler(async (req, res) => {
      } catch (error) {
         await session.abortTransaction();
         session.endSession();
-       
+        // Re-throw the error to be caught by asyncHandler's error handling middleware
         throw error;
     }
 });
@@ -254,7 +254,7 @@ export const declineRedistribution = asyncHandler(async (req, res) => {
         .populate("fromFacility") // Added
         .populate("toFacility")
         .populate("requestedBy"); // Added
- // Re-throw the error to be caught by asyncHandler's error handling middleware
+
     if (!redistribution) {
         res.status(404);
         throw new Error("Redistribution not found");
@@ -293,7 +293,7 @@ export const declineRedistribution = asyncHandler(async (req, res) => {
         action: "Declined Redistribution",
         module: "Redistribution",
         targetId: redistribution._id,
-        message: `${req.user.name} declined redistribution of ${redistribution.quantity} ${redistribution.drug.drugName} from ${redistribution.fromFacility.name} to ${redistribution.toFacility.name}`,
+        message: `${req.user.name} declined redistribution of ${redistribution.quantity} ${redistribution.drug.drugName} to ${redistribution.toFacility.name}`,
     });
 
       await createRedistributionNotification(redistribution, "REDISTRIBUTION_DECLINED");
