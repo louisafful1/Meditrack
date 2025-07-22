@@ -94,6 +94,7 @@ export const scanAndSaveInventory = asyncHandler(async (req, res) => {
       // Log Activity
   await logActivity({
     userId: req.user._id,
+    facility: req.user.facility,
     action: "Create Inventory",
     module: "inventory",
     targetId: savedItem._id,

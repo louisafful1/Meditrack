@@ -66,6 +66,7 @@ export const dispenseDrug = asyncHandler(async (req, res) => {
   // Log to Activity Logs
   await logActivity({
     userId: req.user._id,
+    facility: req.user.facility,
     action: "Dispensed Drug",
     module: "Dispensation",
     targetId: record._id,

@@ -62,6 +62,7 @@ export const createRedistribution = asyncHandler(async (req, res) => {
 
     await logActivity({
         userId: req.user._id,
+        facility: req.user.facility,
         action: "Requested Redistribution",
         module: "Redistribution",
         targetId: redistribution._id,

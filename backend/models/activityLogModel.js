@@ -6,6 +6,11 @@ const activityLogSchema = new mongoose.Schema({
       ref: 'User', 
       required: true 
     },
+      facility: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Facility',
+        required: true 
+    },
   action: { 
     type: String,
      required: true
