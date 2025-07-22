@@ -198,29 +198,36 @@ const getLoginStatus = asyncHandler(async (req, res) => {
 
 
 
-//@desc  Update user profile
+//@desc admin Update any user profile
 //route  PUT/api/users/auth
 //@access private
 
-const updateUser = asyncHandler(async (req, res) => {
-   const user = await User.findById(req.user._id);
+const updateAnyUser = asyncHandler(async (req, res) => {
+    const { id } = req.params; // Get user ID from URL parameters
+    const { name, email, phone, role, active } = req.body; // Data to update
 
-   if (user) {
-    user.name = req.body.name || user.name;
-    user.email = req.body.email || user.email;
-    user.phone = req.body.phone || user.phone;
-    user.role = req.body.role || user.role;
-    user.facility = req.body.facility || user.facility;
+    const user = await User.findById(id);
+
+    if (!user) {
+        res.status(404);
+        throw new Error('User not found');
+    }
+
+    // Update fields (ensure you have proper validation and authorization here)
+    user.name = name !== undefined ? name : user.name;
+    user.email = email !== undefined ? email : user.email; // Be careful with email changes, might need re-verification
+    user.phone = phone !== undefined ? phone : user.phone;
+    user.role = role !== undefined ? role : user.role;
+    // For active, it's boolean, so direct assignment is fine if sent as boolean
+    user.active = active !== undefined ? active : user.active;
 
     const updatedUser = await user.save();
 
+    // Populate facility and select without password for the response
     const userResponse = await User.findById(updatedUser._id).populate('facility', 'name').select('-password');
     res.status(200).json(userResponse);
-   } else{
-    res.status(404);
-    throw new Error('User not Found');
-   }
 });
+
 
 
 // @desc    Send password setup link
@@ -340,7 +347,7 @@ export {
   logoutUser,
   getUserProfile,
   getUsers,
-  updateUser,
+  updateAnyUser,
   getLoginStatus,
   sendPasswordSetupLink,
   resetPassword,

@@ -4,12 +4,12 @@ import { authUser, adminRegisterUser,
     logoutUser,
     getUserProfile,
     getUsers,
-    updateUser,
     getLoginStatus,
     resetPassword,
     sendPasswordSetupLink,
     toggleUserStatus,
     deleteUser,
+    updateAnyUser,
 
 } from '../controllers/userController.js';
 const userRoutes = express.Router();
@@ -17,7 +17,8 @@ userRoutes.post('/register', protect, adminOnly, adminRegisterUser);
 userRoutes.post('/login', authUser);
 userRoutes.post('/logout', protect, logoutUser);
 userRoutes.get('/getLoginStatus', getLoginStatus);
-userRoutes.route('/profile').get(protect, getUserProfile).put(protect, authorizeRoles(['admin', 'supervisor']), updateUser); 
+userRoutes.route('/profile').get(protect, getUserProfile);
+userRoutes.route('/:id').put(protect, authorizeRoles(['admin', 'supervisor']), updateAnyUser); 
 userRoutes.get("/", protect, authorizeRoles(['admin', 'supervisor']), getUsers);
 userRoutes.put("/resetPassword/:resetToken", resetPassword)
 userRoutes.post("/send-setup-link", sendPasswordSetupLink);

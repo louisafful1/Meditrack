@@ -141,22 +141,23 @@ export const getUsers = createAsyncThunk(
   }
 );
 
-// Update User (profile update)
-export const updateUser = createAsyncThunk(
-  "auth/updateUser",
-  async (userData, thunkAPI) => {
-    try {
-      return await authService.updateUser(userData);
-    } catch (error) {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString();
-      return thunkAPI.rejectWithValue(message);
+// Update User (Admin updating any user)
+export const updateUser = createAsyncThunk( 
+    "auth/updateUser", 
+    async ({ id, userData }, thunkAPI) => {
+        try {
+            return await authService.updateUserByAdmin({ id, userData });
+        } catch (error) {
+            const message =
+                (error.response &&
+                    error.response.data &&
+                    error.response.data.message) ||
+                error.message ||
+                error.toString();
+            toast.error(message);
+            return thunkAPI.rejectWithValue(message);
+        }
     }
-  }
 );
 
 // Toggle User Status (active/inactive)
@@ -344,21 +345,29 @@ const authSlice = createSlice({
         toast.error("Failed to fetch users: " + action.payload); 
       })
 
-      // Update User (profile update)
-      .addCase(updateUser.pending, (state) => {
-        state.isLoading = true;
-      })
-      .addCase(updateUser.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
-        state.isLoggedIn = true; 
-        state.user = action.payload; 
-      })
-      .addCase(updateUser.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
-      })
+              // Update User (Admin updating any user)
+            .addCase(updateUser.pending, (state) => {
+                state.isLoading = true;
+            })
+            .addCase(updateUser.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.isSuccess = true;
+                const updatedUser = action.payload; // This should be the full updated user object from backend
+                const index = state.users.findIndex(user => user._id === updatedUser._id);
+                if (index !== -1) {
+                    state.users[index] = updatedUser; // Update the user in the array
+                }
+                // If the updated user is the currently logged-in admin, update the 'user' state as well
+                if (state.user && state.user._id === updatedUser._id) {
+                    state.user = updatedUser;
+                    localStorage.setItem("user", JSON.stringify(updatedUser)); // Update local storage too
+                }
+            })
+            .addCase(updateUser.rejected, (state, action) => {
+                state.isLoading = false;
+                state.isError = true;
+                state.message = action.payload;
+            })
 
       // Toggle User Status (active/inactive)
       .addCase(toggleStatus.pending, (state) => {

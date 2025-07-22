@@ -41,10 +41,10 @@ const getUsers = async () => {
   return response.data;
 };
 
-// Update User
-const updateUser = async (userData) => {
-  const response = await axios.put(API_URL + "profile", userData);
-  return response.data;
+// Update Any User
+const updateUserByAdmin = async ({ id, userData }) => {
+    const response = await axios.put(`${API_URL}${id}`, userData); 
+    return response.data;
 };
 
 
@@ -83,7 +83,7 @@ const authService = {
     getLoginStatus,
     getUserProfile,
     getUsers,
-    updateUser,
+    updateUserByAdmin,
     forgotPassword,
     resetPassword,
     toggleStatus,

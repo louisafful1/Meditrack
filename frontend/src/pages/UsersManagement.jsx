@@ -410,29 +410,7 @@ export default function UsersManagement() {
                                             </option>
                                         ))}
                                     </select>
-                                    {/* Active status for edit mode */}
-                                    {modalMode === "edit" && (
-                                        <div className="flex items-center justify-between text-gray-300">
-                                            <label htmlFor="user-active-status" className="block text-sm font-medium">Status:</label>
-                                            <label className="inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    id="user-active-status"
-                                                    name="active"
-                                                    checked={Boolean(active)} // Ensure it's a boolean
-                                                    onChange={handleInputChange} // Uses handleInputChange
-                                                    className="sr-only peer"
-                                                    disabled={isLoading}
-                                                />
-                                                <div className="relative w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-green-500 transition-colors duration-300 ease-in-out">
-                                                    <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-300 ease-in-out transform peer-checked:translate-x-5"></div>
-                                                </div>
-                                                <span className="ml-3 text-sm font-medium text-gray-300">
-                                                    {Boolean(active) ? "Active" : "Inactive"}
-                                                </span>
-                                            </label>
-                                        </div>
-                                    )}
+                                   
                                 </div>
                                 <div className="p-4 border-t border-gray-700 flex justify-end">
                                     <button
