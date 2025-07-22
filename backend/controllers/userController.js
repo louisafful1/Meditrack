@@ -4,7 +4,7 @@ import generateToken from '../utils/generateToken.js'
 import jwt from 'jsonwebtoken' 
 import crypto from "crypto"
 import { sendEmail } from "../utils/sendEmail.js";
-import ActivityLog from "../models/activityLogModel.js"
+import { logActivity } from "../utils/logActivity.js";
 
 //@desc  Register a new user
 //route  POST/api/users/register
@@ -85,8 +85,9 @@ const adminRegisterUser = asyncHandler(async (req, res) => {
       message,
     });
 
-    await ActivityLog({
+    await logActivity({
       userId: req.user._id,
+      facility: req.user.facility,    
       action: "Registered User",
       module: "User",
       targetId: user._id,
@@ -113,12 +114,13 @@ const authUser = asyncHandler(async (req, res) => {
             throw new Error('Please fill in all required fields');
     
         }
-        const user = await User.findOne({ email }).populate("facility");
+        const user = await User.findOne({ email }).populate('facility', 'name');
   
         if (user && (await user.matchPassword(password))) {
             generateToken(res, user._id);
-            const newUser = await User.findOne({ email }).select("-password"); 
-            res.status(200).json(newUser);
+            const userResponse = user.toObject(); 
+            delete userResponse.password; 
+            res.status(200).json(userResponse)
         } else {
           res.status(401);
           throw new Error("Invalid email or password");
@@ -210,17 +212,10 @@ const updateUser = asyncHandler(async (req, res) => {
     user.role = req.body.role || user.role;
     user.facility = req.body.facility || user.facility;
 
-    const updateUser = await user.save();
-    
-    res.status(200).json({
-        _id: updateUser._id,
-        name: updateUser.name,
-        email: updateUser.email,
-        phone: updateUser.phone,
-        role: updateUser.role,
-        facility: updateUser.facility
+    const updatedUser = await user.save();
 
-    });
+    const userResponse = await User.findById(updatedUser._id).populate('facility', 'name').select('-password');
+    res.status(200).json(userResponse);
    } else{
     res.status(404);
     throw new Error('User not Found');
@@ -309,15 +304,17 @@ const toggleUserStatus = asyncHandler(async (req, res) => {
   // Toggle the active status
   user.active = !user.active;
   await user.save();
+  const userResponse = await User.findById(user._id).populate('facility', 'name').select('-password');
 
   res.status(200).json({
-message: `${user.name} is now ${user.active ? "Active" : "Inactive"}.`,
-            _id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        active: user.active,
+           message: `${userResponse.name} is now ${userResponse.active ? "Active" : "Inactive"}.`,
+            _id: userResponse._id,
+        name: userResponse.name,
+        email: userResponse.email,
+        phone: userResponse.phone,
+        role: userResponse.role,
+        active: userResponse.active,
+        facility: userResponse.facility
   
   });
 });
