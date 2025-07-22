@@ -66,7 +66,7 @@ export const createRedistribution = asyncHandler(async (req, res) => {
         action: "Requested Redistribution",
         module: "Redistribution",
         targetId: redistribution._id,
-        message: `${req.user.name} requested redistribution of ${quantity} ${inventoryItem.drugName} to ${toFacility}`,
+        message: `${req.user.name} requested redistribution of ${quantity} ${inventoryItem.drugName} from ${redistribution.fromFacility.name} to ${toFacility}`,
     });
           await createRedistributionNotification(redistribution, "REDISTRIBUTION_CREATED");
 
@@ -96,11 +96,16 @@ export const getRedistributions = asyncHandler(async (req, res) => {
 // @route   PUT /api/redistributions/:id/approve
 // @access  Private (only receiving facility users)
 export const approveRedistribution = asyncHandler(async (req, res) => {
+   // Start a Mongoose session for transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
+     try {
     const redistribution = await Redistribution.findById(req.params.id)
         .populate("drug")
         .populate("fromFacility")
         .populate("toFacility")
-        .populate("requestedBy"); // Ensure requestedBy is populated for notifications/logs
+        .populate("requestedBy")
+        .session(session);
 
     if (!redistribution) {
         res.status(404);
@@ -110,7 +115,7 @@ export const approveRedistribution = asyncHandler(async (req, res) => {
     // Ensure req.user.facility is an ObjectId for direct comparison
     const userFacilityObjectId = mongoose.Types.ObjectId.isValid(req.user.facility)
         ? new mongoose.Types.ObjectId(req.user.facility)
-        : (req.user.facility && req.user.facility._id ? req.user.facility._id : null);
+        : (req.user.facility && req.user.facility._id ? new mongoose.Types.ObjectId(req.user.facility._id) : null);
 
     // Ensure redistribution.toFacility._id is an ObjectId
     const toFacilityObjectId = redistribution.toFacility?._id;
@@ -124,18 +129,17 @@ export const approveRedistribution = asyncHandler(async (req, res) => {
         res.status(403);
         throw new Error("Not authorized to approve this redistribution");
     }
-
-    if (redistribution.status === "completed") {
-        res.status(400);
-        throw new Error("Redistribution has already been approved");
-    }
+    if (redistribution.status !== "pending") { // Only pending requests can be approved
+            res.status(400);
+            throw new Error(`Redistribution status is '${redistribution.status}', cannot approve.`);
+        }
 
     // Deduct stock from fromFacility
     const fromStock = await Inventory.findOne({
         facility: redistribution.fromFacility._id,
         drugName: redistribution.drug.drugName,
         batchNumber: redistribution.drug.batchNumber,
-    });
+    }).session(session);
 
     if (!fromStock || fromStock.currentStock < redistribution.quantity) {
         res.status(400);
@@ -143,41 +147,67 @@ export const approveRedistribution = asyncHandler(async (req, res) => {
     }
 
     fromStock.currentStock -= redistribution.quantity;
-    await fromStock.save();
+
+       if (fromStock.currentStock === 0) {
+            fromStock.status = "Out of Stock";
+        } else if (fromStock.currentStock > 0 && fromStock.currentStock < fromStock.reorderLevel) {
+            fromStock.status = "Low Stock";
+        } else {
+            fromStock.status = "Adequate";
+        }
+    await fromStock.save({ session });
 
     // Add stock to toFacility (or create new inventory item)
     let toStock = await Inventory.findOne({
         facility: redistribution.toFacility._id,
         drugName: redistribution.drug.drugName,
         batchNumber: redistribution.drug.batchNumber,
-    });
+    }).session(session);
 
     if (toStock) {
         toStock.currentStock += redistribution.quantity;
-        await toStock.save();
+        if (toStock.currentStock === 0) { 
+                toStock.status = "Out of Stock";
+            } else if (toStock.currentStock > 0 && toStock.currentStock < toStock.reorderLevel) {
+                toStock.status = "Low Stock";
+            } else {
+                toStock.status = "Adequate";
+            }
+            await toStock.save({ session }); 
     } else {
-        toStock = await Inventory.create({
+            // If new item, calculate its initial status
+            let initialNewStockStatus;
+            if (redistribution.quantity === 0) {
+                initialNewStockStatus = "Out of Stock";
+            } else if (redistribution.quantity > 0 && redistribution.quantity < (redistribution.drug.reorderLevel || 10)) { 
+                initialNewStockStatus = "Low Stock";
+            } else {
+                initialNewStockStatus = "Adequate";
+            }
+        toStock = await Inventory.create([{
             drugName: redistribution.drug.drugName,
             batchNumber: redistribution.drug.batchNumber,
             currentStock: redistribution.quantity,
             supplier: redistribution.drug.supplier || "Redistributed",
             expiryDate: redistribution.drug.expiryDate,
             receivedDate: new Date(),
-            status: "Adequate",
+            status: initialNewStockStatus,
             location: "Redistributed Stock",
             facility: redistribution.toFacility._id,
             createdBy: req.user._id,
-        });
+            reorderLevel: redistribution.drug.reorderLevel || 10,
+        }], { session });
+        toStock = toStock[0];
     }
 
     // Update redistribution
     redistribution.status = "completed";
     redistribution.receivedBy = req.user._id;
     redistribution.receivedAt = new Date();
-    await redistribution.save();
+    await redistribution.save({ session });
 
     //log for ai training
-    await RedistributionLog.create({
+    await RedistributionLog.create([{
         redistributionId: redistribution._id,
         drug: redistribution.drug._id,
         quantity: redistribution.quantity,
@@ -185,24 +215,32 @@ export const approveRedistribution = asyncHandler(async (req, res) => {
         toFacility: redistribution.toFacility._id,
         reason: redistribution.reason,
         expiryDate: redistribution.expiryDate,
-        requestedBy: redistribution.requestedBy._id, // Ensure this is _id
+        requestedBy: redistribution.requestedBy._id, 
         receivedBy: req.user._id,
         requestedAt: redistribution.createdAt,
         receivedAt: redistribution.receivedAt,
         status: redistribution.status,
-    });
+    }], { session });
 
     await logActivity({
         userId: req.user._id,
+        facility: req.user.facility,
         action: "Approved Redistribution",
         module: "Redistribution",
         targetId: redistribution._id,
         message: `${req.user.name} approved redistribution of ${redistribution.quantity} ${redistribution.drug.drugName}`,
-    });
+    }, { session });
 
-      await createRedistributionNotification(redistribution, "REDISTRIBUTION_APPROVED");
-
+      await createRedistributionNotification(redistribution, "REDISTRIBUTION_APPROVED", { session });
+        await session.commitTransaction();
+        session.endSession();
     res.status(200).json({ message: "Redistribution approved", redistribution });
+     } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+       
+        throw error;
+    }
 });
 
 
@@ -216,7 +254,7 @@ export const declineRedistribution = asyncHandler(async (req, res) => {
         .populate("fromFacility") // Added
         .populate("toFacility")
         .populate("requestedBy"); // Added
-
+ // Re-throw the error to be caught by asyncHandler's error handling middleware
     if (!redistribution) {
         res.status(404);
         throw new Error("Redistribution not found");
@@ -248,13 +286,14 @@ export const declineRedistribution = asyncHandler(async (req, res) => {
     redistribution.declinedAt = new Date();
     await redistribution.save();
 
-    // Log Activity (re-added based on approve function's pattern)
+    // Log Activity 
     await logActivity({
         userId: req.user._id,
+        facility: req.user.facility,
         action: "Declined Redistribution",
         module: "Redistribution",
         targetId: redistribution._id,
-        message: `${req.user.name} declined redistribution of ${redistribution.quantity} ${redistribution.drug.drugName} to ${redistribution.toFacility.name}`,
+        message: `${req.user.name} declined redistribution of ${redistribution.quantity} ${redistribution.drug.drugName} from ${redistribution.fromFacility.name} to ${redistribution.toFacility.name}`,
     });
 
       await createRedistributionNotification(redistribution, "REDISTRIBUTION_DECLINED");

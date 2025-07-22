@@ -16,7 +16,7 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
     supplier,
     expiryDate,
     receivedDate,
-    status,
+    reorderLevel,
     location,
   } = req.body;
 
@@ -24,7 +24,15 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
     res.status(400);
     throw new Error('Please fill in all required fields');
   }
-
+  // Calculate Status Based on Stock and Reorder Level
+  let calculatedStatus;
+  if (currentStock === 0) {
+    calculatedStatus = "Out of Stock";
+  } else if (currentStock > 0 && currentStock < reorderLevel) {
+    calculatedStatus = "Low Stock";
+  } else {
+    calculatedStatus = "Adequate";
+  }
   const facilityId = req.user.facility;
   const item = await Inventory.create({
     drugName,
@@ -34,11 +42,11 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
     expiryDate,
     receivedDate,
     location,
-    status: status || "Adequate",
+    reorderLevel,
+    status: calculatedStatus,
     facility: facilityId,
     createdBy: req.user._id,
   });
-  // await redisClient.del(`inventory:${req.user.facility}`);
 
     // Log Activity
     await logActivity({
