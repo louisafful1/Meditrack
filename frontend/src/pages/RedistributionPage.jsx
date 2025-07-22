@@ -54,25 +54,34 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+        <div 
+            className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
+            onClick={onClose} // Allow closing by clicking outside the modal
+        >
             <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
+                initial={{ opacity: 0, scale: 0.95 }} // Adjusted from 0.9 for consistency
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-gray-800 p-6 rounded-lg shadow-xl border border-gray-700 max-w-sm w-full"
+                exit={{ opacity: 0, scale: 0.95 }} // Adjusted from 0.9 for consistency
+                onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside modal
+                className="w-full max-w-sm bg-gray-900 rounded-xl border border-gray-700 shadow-lg overflow-hidden"
             >
-                <h3 className="text-xl font-semibold text-white mb-4">{title}</h3>
-                <p className="text-gray-300 mb-6">{message}</p>
-                <div className="flex justify-end gap-3">
+                {/* Modal Content Area - added a new div for padding */}
+                <div className="p-5"> 
+                    <h3 className="text-lg font-semibold text-white mb-3">{title}</h3> {/* Adjusted text size and margin */}
+                    <p className="text-gray-300 text-sm">{message}</p> {/* Adjusted text size */}
+                </div>
+
+                {/* Modal Footer - added styling here */}
+                <div className="flex justify-end gap-3 p-4 bg-gray-800 border-t border-gray-700">
                     <button
                         onClick={onClose}
-                        className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                        className="px-4 py-2 text-gray-300 border border-gray-600 rounded-md hover:bg-gray-700 transition-colors"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={onConfirm}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+                        className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors" // Changed to red for "confirm" action style
                     >
                         {confirmText}
                     </button>
