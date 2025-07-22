@@ -17,7 +17,7 @@ export const getDashboardSummary = asyncHandler(async (req, res) => {
     // 2. Low Stocks (status: "Low Stock" or "Out of stock")
     const lowStocks = await Inventory.countDocuments({
         facility: facilityId,
-        status: { $in: ["Low Stock", "Out of stock"] }
+        status: { $in: ["Low Stock", "Out of Stock"] }
     });
 
     // 3. Nearing Expiry (within the next 90 days, for example)

@@ -32,7 +32,7 @@ export const dispenseDrug = asyncHandler(async (req, res) => {
   inventoryItem.currentStock -= quantityDispensed;
 
     if (inventoryItem.currentStock === 0) {
-    inventoryItem.status = "Sut of Stock";
+    inventoryItem.status = "Out of Stock";
   } else if (inventoryItem.currentStock <= inventoryItem.reorderLevel) {
     inventoryItem.status = "Low Stock";
   } else {
