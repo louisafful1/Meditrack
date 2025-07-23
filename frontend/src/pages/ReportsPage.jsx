@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { FileDown, Calendar, BarChart, FileText } from "lucide-react";
 import Header from "../components/common/Header";
 import Datepicker from "react-tailwindcss-datepicker";
-import { downloadCSV, downloadPDF } from "../../utils/exportUtils";
+import { downloadCSV, downloadPDF } from "../utils/exportUtils";
 
 // Redux imports
 import { useDispatch, useSelector } from "react-redux";
@@ -13,6 +13,9 @@ const ReportsPage = () => {
   const { currentReportData, isLoading, isError, message } = useSelector(
     (state) => state.report
   );
+
+  const user = useSelector((state) => state.auth.user);
+  const facility = useSelector((state) => state.facility.facility);
 
   const [reportType, setReportType] = useState("expired");
   const [dateRange, setDateRange] = useState({
@@ -110,7 +113,14 @@ const ReportsPage = () => {
             </div>
 
             <button
-              onClick={() => downloadCSV(currentReportData, `${reportType}-report`)}
+              onClick={() => {
+                const metadata = {
+                  facilityName: facility ? facility.name : "Unknown Facility",
+                  userName: user ? user.name || user.username || "Unknown User" : "Unknown User",
+                  generatedAt: new Date().toLocaleString(),
+                };
+                downloadCSV(currentReportData, `${reportType}-report`, metadata);
+              }}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm transition-colors duration-200 w-full sm:w-auto"
             >
               <FileText size={16} className="inline mr-2" />
@@ -118,7 +128,14 @@ const ReportsPage = () => {
             </button>
 
             <button
-              onClick={() => downloadPDF(currentReportData, reportTitles[reportType])}
+              onClick={() => {
+                const metadata = {
+                  facilityName: facility ? facility.name : "Unknown Facility",
+                  userName: user ? user.name || user.username || "Unknown User" : "Unknown User",
+                  generatedAt: new Date().toLocaleString(),
+                };
+                downloadPDF(currentReportData, reportTitles[reportType], metadata);
+              }}
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm transition-colors duration-200 w-full sm:w-auto"
             >
               <FileDown size={16} className="inline mr-2" />

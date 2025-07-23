@@ -14,7 +14,7 @@ import {
 } from "../redux/auth/authSlice";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "react-toastify";
-import { validateEmail } from "../../utils"; 
+import { validateEmail } from "../utils"; 
 
 export default function UsersManagement() {
     const { users, isLoading, isSuccess, isError, message } = useSelector(
