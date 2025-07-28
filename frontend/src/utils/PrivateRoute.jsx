@@ -1,7 +1,7 @@
 // utils/PrivateRoute.jsx
 import { Navigate, Outlet } from "react-router-dom";
 import { useSelector } from "react-redux";
-import Loader from "../src/components/loader/loader"; 
+import Loader from "../components/loader/loader"; 
 
 const PrivateRoute = () => {
   const { user, isLoading, isInitialized } = useSelector((state) => state.auth);

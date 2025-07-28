@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { useEffect, useState, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -17,6 +18,7 @@ import {
     RESET_DRUG
 } from "../redux/drug/drugSlice";
 import { toast } from 'react-toastify';
+import { downloadCSV } from "../utils/exportUtils";
 
 const InventoryPage = () => {
     const dispatch = useDispatch();
@@ -37,7 +39,6 @@ const InventoryPage = () => {
 
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [drugToDeleteId, setDrugToDeleteId] = useState(null);
-
 
     const tableBodyRef = useRef(null);
 
@@ -108,20 +109,18 @@ const InventoryPage = () => {
 
     const confirmDelete = () => {
         if (drugToDeleteId) {
-            // --- CRITICAL CHANGE FOR DELETE ---
-            // Pass only the ID string to the deleteDrug thunk
             dispatch(deleteDrug(drugToDeleteId))
                 .unwrap()
                 .then(() => {
                     toast.success("Drug deleted successfully!");
-                    dispatch(getAllDrugs()); // Refresh the list
+                    dispatch(getAllDrugs());
                 })
                 .catch((error) => {
                     toast.error(`Failed to delete drug: ${error.message || error}`);
                 })
                 .finally(() => {
-                    setShowConfirmModal(false); // Close modal
-                    setDrugToDeleteId(null); // Clear ID
+                    setShowConfirmModal(false);
+                    setDrugToDeleteId(null);
                 });
         }
     };
@@ -153,16 +152,7 @@ const InventoryPage = () => {
             toast.info("No data to export.");
             return;
         }
-        const headers = Object.keys(drugs[0]).join(",");
-        const rows = drugs.map((obj) => Object.values(obj).join(",")).join("\n");
-        const csv = [headers, rows].join("\n");
-        const blob = new Blob([csv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "inventory.csv";
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadCSV(drugs, "inventory");
         toast.success("Inventory data exported successfully!");
     };
 

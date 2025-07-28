@@ -12,12 +12,12 @@ import RedistributionPage from "./pages/RedistributionPage";
 import ReportPage from "./pages/ReportsPage";
 import UsersManagement from "./pages/UsersManagement";
 import ActivityLogsPage from "./pages/ActivityLogsPage";
-import PrivateRoute from "../utils/PrivateRoute";
+import PrivateRoute from "./utils/PrivateRoute";
 import Layout from "./components/common/Layout";
 import { useDispatch, useSelector } from "react-redux";
 import { getUserProfile } from "./redux/auth/authSlice";
 import { useEffect } from "react";
-import QRCodeGenerator from "../utils/QRCodeGenerator";
+import QRCodeGenerator from "./utils/QRCodeGenerator";
 
 function App() {
   axios.defaults.withCredentials = true;

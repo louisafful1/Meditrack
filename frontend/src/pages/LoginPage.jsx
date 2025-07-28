@@ -5,7 +5,7 @@ import { login, RESET_AUTH } from "../redux/auth/authSlice";
 import { useNavigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import Loader from "../components/loader/loader";
-import { validateEmail } from "../../utils";
+import { validateEmail } from "../utils";
 
 const LoginPage = () => {
   
