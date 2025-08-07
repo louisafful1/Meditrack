@@ -248,7 +248,7 @@ const ManualEntryForm = ({ onCancel, initialData, onSubmissionSuccess }) => {
             </div>
 
             {/* Buttons */}
-            <div className="flex gap-3 pt-3 col-span-1 md:col-span-2 justify-end">
+            <div className="md:col-span-2 flex flex-wrap justify-center md:justify-end gap-3 pt-3">
                 <button
                     type="button"
                     onClick={onCancel}
