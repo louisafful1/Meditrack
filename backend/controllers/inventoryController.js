@@ -51,7 +51,7 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
     // Log Activity
     await logActivity({
       userId: req.user._id,
-      action: "Create Inventory",
+      action: "Created Inventory",
       module: "Inventory",
       targetId: item._id,
       message: `${drugName} added to inventory by ${req.user.name}`,
