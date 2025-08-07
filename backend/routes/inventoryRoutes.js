@@ -20,8 +20,8 @@ InventoryRoutes.route('/')
 
 InventoryRoutes.route('/:id')
   .get(getInventoryItem)
-  .put(updateInventoryItem)
-  .delete(deleteInventoryItem);
+  .put(protect, updateInventoryItem)
+  .delete(protect, deleteInventoryItem);
 
 
 

@@ -151,7 +151,7 @@ export const getInventoryItem = asyncHandler(async (req, res) => {
 export const updateInventoryItem = asyncHandler(async (req, res) => {
   const item = await Inventory.findById(req.params.id);
 
-  if (!item || item.facility.toString() !== req.user.facility.toString()) {
+  if (!item || item.facility.toString() !== req.user.facility.id.toString()) {
     res.status(404);
     throw new Error('Item not found or not accessible');
   }
@@ -183,7 +183,7 @@ export const updateInventoryItem = asyncHandler(async (req, res) => {
 export const deleteInventoryItem = asyncHandler(async (req, res) => {
   const item = await Inventory.findById(req.params.id);
 
-  if (!item || item.facility.toString() !== req.user.facility.toString()) {
+  if (!item || item.facility.toString() !== req.user.facility.id.toString()) {
     res.status(404);
     throw new Error('Item not found or not accessible');
   }
