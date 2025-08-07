@@ -1,10 +1,9 @@
-/* eslint-disable no-unused-vars */
 import { useEffect, useState, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     Package, AlertCircle, Boxes, ArrowUpDown, Search,
     Edit, Trash2, Download, X,
-    QrCode
+    QrCode, Loader2
 } from "lucide-react";
 import Header from "../components/common/Header";
 import ManualEntryForm from "../components/inventory/ManualEntryForm";
@@ -38,7 +37,36 @@ const InventoryPage = () => {
     const [isQRScanning, setIsQRScanning] = useState(false);
 
     const [showConfirmModal, setShowConfirmModal] = useState(false);
-    const [drugToDeleteId, setDrugToDeleteId] = useState(null);
+    const [confirmModalContent, setConfirmModalContent] = useState({
+        title: "",
+        message: "",
+        action: null, 
+    });
+    const [drugToDeleteId, setDrugToDeleteId] = useState(null); 
+
+    const showConfirmation = (title, message, action) => {
+        setConfirmModalContent({ title, message, action });
+        setShowConfirmModal(true);
+    };
+
+    const handleConfirmAction = async () => {
+        setConfirmModalContent(prev => ({ ...prev, action: null })); 
+        try {
+            if (confirmModalContent.action) {
+                await confirmModalContent.action();
+            }
+        } finally {
+            setShowConfirmModal(false); 
+            setConfirmModalContent({ title: "", message: "", action: null });
+            setDrugToDeleteId(null); 
+        }
+    };
+
+    const handleCancelConfirmation = () => {
+        setShowConfirmModal(false);
+        setConfirmModalContent({ title: "", message: "", action: null });
+        setDrugToDeleteId(null); 
+    };
 
     const tableBodyRef = useRef(null);
 
@@ -49,7 +77,7 @@ const InventoryPage = () => {
         const matchesFilter =
             filter === "all" ||
             (filter === "low" && item.status === "Low Stock") ||
-            (filter === "critical" && item.status === "Critical");
+            (filter === "Out of Stock" && item.status === "Out of Stock");
         return matchesSearch && matchesFilter;
     });
 
@@ -103,31 +131,21 @@ const InventoryPage = () => {
     }, [isError, message]);
 
     const handleDeleteDrug = (drugId) => {
-        setDrugToDeleteId(drugId);
-        setShowConfirmModal(true);
-    };
-
-    const confirmDelete = () => {
-        if (drugToDeleteId) {
-            dispatch(deleteDrug(drugToDeleteId))
-                .unwrap()
-                .then(() => {
+        setDrugToDeleteId(drugId); 
+        showConfirmation(
+            "Confirm Deletion",
+            "Are you sure you want to delete this drug from inventory? This action cannot be undone.",
+            async () => {
+                
+                const resultAction = await dispatch(deleteDrug(drugId)); 
+                if (deleteDrug.fulfilled.match(resultAction)) {
                     toast.success("Drug deleted successfully!");
-                    dispatch(getAllDrugs());
-                })
-                .catch((error) => {
-                    toast.error(`Failed to delete drug: ${error.message || error}`);
-                })
-                .finally(() => {
-                    setShowConfirmModal(false);
-                    setDrugToDeleteId(null);
-                });
-        }
-    };
-
-    const cancelDelete = () => {
-        setShowConfirmModal(false);
-        setDrugToDeleteId(null);
+                    dispatch(getAllDrugs()); 
+                } else if (deleteDrug.rejected.match(resultAction)) {
+                    toast.error(resultAction.payload || "Failed to delete drug.");
+                }
+            }
+        );
     };
 
     const handleEditClick = (drug) => {
@@ -293,7 +311,7 @@ const InventoryPage = () => {
                         >
                             <option value="all">All</option>
                             <option value="low">Low Stock</option>
-                            <option value="critical">Critical</option>
+                            <option value="Out of Stock">Out of Stock</option>
                         </select>
                         <button
                             onClick={handleExportCSV}
@@ -351,7 +369,7 @@ const InventoryPage = () => {
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`px-2 py-1 text-xs rounded-full font-medium ${
-                                                item.status === "Critical"
+                                                item.status === "Out of Stock"
                                                     ? "bg-red-500/20 text-red-300"
                                                     : item.status === "Low Stock"
                                                     ? "bg-yellow-500/20 text-yellow-300"
@@ -403,31 +421,34 @@ const InventoryPage = () => {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+                        className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-4"
+                        onClick={handleCancelConfirmation}
                     >
                         <motion.div
-                            initial={{ scale: 0.9, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.9, y: 20 }}
-                            className="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700 max-w-sm w-full text-center"
+                            initial={{ scale: 0.95 }}
+                            animate={{ scale: 1 }}
+                            exit={{ scale: 0.95 }}
+                            onClick={(e) => e.stopPropagation()} 
+                            className="w-full max-w-sm bg-gray-900 rounded-xl border border-gray-700 shadow-lg overflow-hidden"
                         >
-                            <AlertCircle className="text-red-500 mx-auto mb-4" size={48} />
-                            <h3 className="text-xl font-semibold text-white mb-2">Confirm Deletion</h3>
-                            <p className="text-gray-300 mb-6">
-                                Are you sure you want to delete this drug from inventory? This action cannot be undone.
-                            </p>
-                            <div className="flex justify-center gap-4">
+                            <div className="p-5">
+                                <h3 className="text-lg font-semibold text-white mb-3">{confirmModalContent.title}</h3>
+                                <p className="text-gray-300 text-sm">{confirmModalContent.message}</p>
+                            </div>
+                            <div className="flex justify-end gap-3 p-4 bg-gray-800 border-t border-gray-700">
                                 <button
-                                    onClick={cancelDelete}
-                                    className="px-5 py-2 rounded-md bg-gray-600 text-white hover:bg-gray-700 transition-colors"
+                                    onClick={handleCancelConfirmation}
+                                    className="px-4 py-2 text-gray-300 border border-gray-600 rounded-md hover:bg-gray-700 transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
-                                    onClick={confirmDelete}
-                                    className="px-5 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                    onClick={handleConfirmAction}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                                    disabled={isLoading} // IMPORTANT: Use isLoading here
                                 >
-                                    Delete
+                                    {isLoading ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : null}
+                                    Confirm
                                 </button>
                             </div>
                         </motion.div>
