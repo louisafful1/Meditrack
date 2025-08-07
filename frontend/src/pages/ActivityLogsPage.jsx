@@ -180,6 +180,7 @@ const ActivityLogsPage = () => {
                             Error loading logs: {message}
                         </div>
                     ) : (
+                        <div className="overflow-x-auto rounded-xl border border-gray-700 shadow-lg">
                         <table className="min-w-full text-sm text-left text-gray-300">
                             <thead className="bg-gray-700 text-gray-400">
                                 <tr>
@@ -231,6 +232,7 @@ const ActivityLogsPage = () => {
                                 </AnimatePresence>
                             </tbody>
                         </table>
+                        </div>
                     )}
                 </motion.div>
             </main>
