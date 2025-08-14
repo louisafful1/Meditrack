@@ -21,6 +21,17 @@ const userSchema = mongoose.Schema(
     phone: {
       type: String,
       required: [true, "Please add an email"],
+            validate: {
+        // ✨ NEW GHANA-SPECIFIC PHONE NUMBER REGEX
+        validator: function(v) {
+          // This regex matches three specific Ghanaian phone number formats:
+          // 1. ^\+233\d{9}$ : Starts with "+233" followed by exactly 9 digits (e.g., +233591414352)
+          // 2. ^0\d{9}$     : Starts with "0" followed by exactly 9 digits (e.g., 0591414352)
+          // 3. ^\d{9}$      : Is exactly 9 digits long (e.g., 591414352)
+          return /^(\+233\d{9}|0\d{9}|\d{9})$/.test(v);
+        },
+        message: props => `${props.value} is not a valid Ghanaian phone number!`,
+      },
     },
     password: {
       type: String,

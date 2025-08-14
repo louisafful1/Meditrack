@@ -8,8 +8,7 @@ const QRCodeGenerator = () => {
     currentStock: "",
     supplier: "",
     expiryDate: "",
-    receivedDate: "",
-
+  
   });
 
   const [qrUrl, setQrUrl] = useState("");
@@ -28,6 +27,7 @@ const QRCodeGenerator = () => {
       console.error("QR Code generation failed", err);
     }
   };
+  
 
   return (
 <div className="p-6 max-w-lg mx-auto bg-gray-800 text-white rounded-md shadow-md overflow-y-auto max-h-screen">

@@ -82,7 +82,6 @@ export default function UsersManagement() {
     // Handle errors - FIXED: Remove automatic re-fetching on error
     useEffect(() => {
         if (isError && message) {
-            toast.error(message);
             dispatch(RESET_AUTH()); 
         }
     }, [isError, message, dispatch]);
@@ -124,6 +123,8 @@ export default function UsersManagement() {
                 setPage(1); // Optionally reset to first page
             }
         } else if (resultAction.meta.requestStatus === 'rejected') {
+              const errorMessage = resultAction.payload || "An error occurred during submission.";
+            toast.error(errorMessage); 
             console.error("Form submission failed:", resultAction.payload);
         }
     };

@@ -12,6 +12,7 @@
   "dependencies": {
     "@reduxjs/toolkit": "^2.8.2",
     "@tailwindcss/vite": "^4.0.9",
+    "@zxing/browser": "^0.1.5",
     "axios": "^1.10.0",
     "framer-motion": "^12.4.9",
     "html5-qrcode": "^2.3.8",

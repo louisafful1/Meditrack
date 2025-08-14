@@ -25,6 +25,7 @@ const QRScannerSection = ({ onSwitchToManual, onResult, isScanning, setIsScannin
                    !err.message.includes("No stream to stop") &&
                    !err.message.includes("Cannot clear while scan is ongoing") &&
                    !err.message.includes("removeChild")) {
+                    toast.error(`Failed to stop QR scanner: ${err.message || 'Unknown error'}`);
                 }
             } finally {
                 html5QrCodeRef.current = null; // Ensure ref is nullified after attempt
@@ -94,6 +95,7 @@ const QRScannerSection = ({ onSwitchToManual, onResult, isScanning, setIsScannin
                         !err.message.includes("Code scanner not running")) {
                         toast.error(`Failed to start QR scanner: ${err.message || 'Unknown error'}`);
                     } else {
+                        console.warn("QR scanner start failed with non-critical error:", err);
                     }
                 }
             }
@@ -160,3 +162,104 @@ const QRScannerSection = ({ onSwitchToManual, onResult, isScanning, setIsScannin
 };
 
 export default QRScannerSection;
+
+
+
+
+
+// import React, { useEffect, useRef, useState } from "react";
+// import { BrowserMultiFormatReader } from "@zxing/browser";
+
+// const QRScannerSection = () => {
+//   const videoRef = useRef(null);
+//   const codeReaderRef = useRef(null);
+//   const [devices, setDevices] = useState([]);
+//   const [selectedDeviceId, setSelectedDeviceId] = useState("");
+//   const [scanning, setScanning] = useState(false);
+//   const [result, setResult] = useState("");
+
+//   useEffect(() => {
+//     // Create a new reader instance
+//     codeReaderRef.current = new BrowserMultiFormatReader();
+
+//     // List devices correctly (static method)
+//     BrowserMultiFormatReader.listVideoInputDevices()
+//       .then(videoInputDevices => {
+//         setDevices(videoInputDevices);
+//         if (videoInputDevices.length > 0) {
+//           setSelectedDeviceId(videoInputDevices[0].deviceId);
+//         }
+//       })
+//       .catch(err => console.error("Error listing devices:", err));
+
+//     return () => {
+//       stopScanner();
+//     };
+//   }, []);
+
+//   const startScanner = () => {
+//     if (!selectedDeviceId) return;
+
+//     setScanning(true);
+//     setResult("");
+
+//     codeReaderRef.current
+//       .decodeFromVideoDevice(selectedDeviceId, videoRef.current, (result, err) => {
+//         if (result) {
+//           setResult(result.getText());
+//           stopScanner();
+//         }
+//         if (err && !(err instanceof ZXing.NotFoundException)) {
+//           console.error(err);
+//         }
+//       })
+//       .catch(err => console.error("Error starting scanner:", err));
+//   };
+
+//   const stopScanner = () => {
+//     try {
+//       if (codeReaderRef.current) {
+//         codeReaderRef.current.stopContinuousDecode(); // stops scanning
+//         codeReaderRef.current.stopStreams(); // stops camera
+//       }
+//       setScanning(false);
+//     } catch (err) {
+//       console.error("Error stopping scanner:", err);
+//     }
+//   };
+
+//   return (
+//     <div>
+//       <h2>QR Code Scanner</h2>
+
+//       {/* Camera selection */}
+//       {devices.length > 0 && (
+//         <select
+//           value={selectedDeviceId}
+//           onChange={(e) => setSelectedDeviceId(e.target.value)}
+//         >
+//           {devices.map((device, idx) => (
+//             <option key={idx} value={device.deviceId}>
+//               {device.label || `Camera ${idx + 1}`}
+//             </option>
+//           ))}
+//         </select>
+//       )}
+
+//       {/* Video preview */}
+//       <video ref={videoRef} style={{ width: "300px", height: "200px" }} />
+
+//       {/* Controls */}
+//       {!scanning ? (
+//         <button onClick={startScanner}>Start Scanner</button>
+//       ) : (
+//         <button onClick={stopScanner}>Stop Scanner</button>
+//       )}
+
+//       {/* Result */}
+//       {result && <p>Scanned Result: {result}</p>}
+//     </div>
+//   );
+// };
+
+// export default QRScannerSection;
