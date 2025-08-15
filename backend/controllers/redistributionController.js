@@ -26,6 +26,16 @@ const generateReportCacheKey = (reportType, userId, facilityId, dateRange) => {
   return `report:${reportType}:${userId}:${facilityIdString}:${startDate}:${endDate}`;
 };
 
+// Helper to generate a unique cache key for activity logs (must match activityLogController.js logic)
+const generateActivityLogCacheKey = (userId, facilityId, filters) => {
+    const facilityIdString = getFacilityIdString(facilityId);
+    const userFilter = filters.user || 'all-users';
+    const moduleFilter = filters.module || 'all-modules';
+    const fromDate = filters.from || 'no-start-date';
+    const toDate = filters.to || 'no-end-date';
+    return `activityLogs:${userId}:${facilityIdString}:${userFilter}:${moduleFilter}:${fromDate}:${toDate}`;
+};
+
 
 // @desc    Create redistribution request
 // @route   POST /api/redistribution
@@ -84,6 +94,7 @@ export const createRedistribution = asyncHandler(async (req, res) => {
     await deleteCache(requestingFacilityCacheKey);
 
 
+    // Log activity
     await logActivity({
         userId: userId,
         action: "Requested Redistribution",
@@ -92,6 +103,15 @@ export const createRedistribution = asyncHandler(async (req, res) => {
         message: `${req.user.name} requested redistribution of ${quantity} ${inventoryItem.drugName} to ${receivingFacility.name}`,
         facility: fromFacilityObjectId
     });
+
+    // ✨ CORE FIX: Invalidate ALL activity log cache keys for this facility
+    const activityLogWildcardKey = `activityLogs:${userId}:${getFacilityIdString(fromFacilityObjectId)}:*`;
+    await deleteCache(activityLogWildcardKey);
+    await deleteCache(generateActivityLogCacheKey(userId, fromFacilityObjectId, {})); // Default "all" filter
+    await deleteCache(generateActivityLogCacheKey(userId, fromFacilityObjectId, { module: 'Redistribution' }));
+    await deleteCache(generateActivityLogCacheKey(userId, fromFacilityObjectId, { dateRange: 'today' }));
+
+
     await createRedistributionNotification(redistribution, "REDISTRIBUTION_CREATED");
 
     res.status(201).json(redistribution);
@@ -240,6 +260,7 @@ export const approveRedistribution = asyncHandler(async (req, res) => {
             status: redistribution.status,
         }], { session });
 
+        // Log activity
         await logActivity({
             userId: req.user._id,
             facility: currentUserFacilityObjectId,
@@ -248,6 +269,23 @@ export const approveRedistribution = asyncHandler(async (req, res) => {
             targetId: redistribution._id,
             message: `${req.user.name} approved redistribution of ${redistribution.quantity} ${redistribution.drug.drugName} from ${redistribution.fromFacility.name} to ${redistribution.toFacility.name}`,
         }, { session });
+
+        // ✨ CORE FIX: Invalidate ALL activity log cache keys for both facilities
+        // Invalidate for FROM facility
+        const fromFacilityActivityLogWildcardKey = `activityLogs:${redistribution.requestedBy._id}:${getFacilityIdString(redistribution.fromFacility._id)}:*`;
+        await deleteCache(fromFacilityActivityLogWildcardKey);
+        await deleteCache(generateActivityLogCacheKey(redistribution.requestedBy._id, redistribution.fromFacility._id, {}));
+        await deleteCache(generateActivityLogCacheKey(redistribution.requestedBy._id, redistribution.fromFacility._id, { module: 'Redistribution' }));
+        await deleteCache(generateActivityLogCacheKey(redistribution.requestedBy._id, redistribution.fromFacility._id, { dateRange: 'today' }));
+
+
+        // Invalidate for TO facility (current user's)
+        const toFacilityActivityLogWildcardKey = `activityLogs:${req.user._id}:${getFacilityIdString(redistribution.toFacility._id)}:*`;
+        await deleteCache(toFacilityActivityLogWildcardKey);
+        await deleteCache(generateActivityLogCacheKey(req.user._id, redistribution.toFacility._id, {}));
+        await deleteCache(generateActivityLogCacheKey(req.user._id, redistribution.toFacility._id, { module: 'Redistribution' }));
+        await deleteCache(generateActivityLogCacheKey(req.user._id, redistribution.toFacility._id, { dateRange: 'today' }));
+
 
         await createRedistributionNotification(redistribution, "REDISTRIBUTION_APPROVED", { session });
 
@@ -331,6 +369,13 @@ export const declineRedistribution = asyncHandler(async (req, res) => {
     // Invalidate 'redistribution' report cache for the receiving facility (current user's)
     const currentUserRedistributionCacheKey = generateReportCacheKey('redistribution', req.user._id, currentUserFacilityObjectId, { startDate: null, endDate: null });
     await deleteCache(currentUserRedistributionCacheKey);
+
+    // ✨ CORE FIX: Invalidate ALL activity log cache keys for this facility
+    const activityLogWildcardKey = `activityLogs:${req.user._id}:${getFacilityIdString(currentUserFacilityObjectId)}:*`;
+    await deleteCache(activityLogWildcardKey);
+    await deleteCache(generateActivityLogCacheKey(req.user._id, currentUserFacilityObjectId, {})); // Default "all" filter
+    await deleteCache(generateActivityLogCacheKey(req.user._id, currentUserFacilityObjectId, { module: 'Redistribution' }));
+    await deleteCache(generateActivityLogCacheKey(req.user._id, currentUserFacilityObjectId, { dateRange: 'today' }));
 
 
     res.status(200).json({ message: "Redistribution declined", redistribution });

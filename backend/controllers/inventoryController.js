@@ -25,6 +25,16 @@ const generateReportCacheKey = (reportType, userId, facilityId, dateRange) => {
   return `report:${reportType}:${userId}:${facilityIdString}:${startDate}:${endDate}`;
 };
 
+// Helper to generate a unique cache key for activity logs (must match activityLogController.js logic)
+const generateActivityLogCacheKey = (userId, facilityId, filters) => {
+    const facilityIdString = getFacilityIdString(facilityId);
+    const userFilter = filters.user || 'all-users';
+    const moduleFilter = filters.module || 'all-modules';
+    const fromDate = filters.from || 'no-start-date';
+    const toDate = filters.to || 'no-end-date';
+    return `activityLogs:${userId}:${facilityIdString}:${userFilter}:${moduleFilter}:${fromDate}:${toDate}`;
+};
+
 // @desc    Add new inventory item
 // @route   POST /api/inventory
 // @access  Private
@@ -97,11 +107,11 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
   });
 
   // Invalidate relevant report caches after creation
-  const cacheKeysToInvalidate = [
+  const reportCacheKeysToInvalidate = [
       'inventory', 'expired', 'nearing', 'dispensed', 'redistribution'
   ];
 
-  for (const reportTypeToClear of cacheKeysToInvalidate) {
+  for (const reportTypeToClear of reportCacheKeysToInvalidate) {
       const cacheKey = generateReportCacheKey(reportTypeToClear, userId, facilityObjectId, { startDate: null, endDate: null });
       await deleteCache(cacheKey);
   }
@@ -115,6 +125,14 @@ export const createInventoryItem = asyncHandler(async (req, res) => {
     message: `${drugName} added to inventory by ${req.user.name}`,
     facility: facilityObjectId,
   });
+
+  // ✨ CORE FIX: Invalidate ALL activity log cache keys for this facility
+  const activityLogWildcardKey = `activityLogs:${userId}:${getFacilityIdString(facilityObjectId)}:*`;
+  await deleteCache(activityLogWildcardKey);
+  await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, {})); // Default "all" filter
+  await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, { module: 'Inventory' }));
+  await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, { dateRange: 'today' }));
+
 
   await checkAndCreateExpiryNotification(item);
   await checkStockLevelNotification(item);
@@ -186,11 +204,11 @@ export const scanAndSaveInventory = asyncHandler(async (req, res) => {
     const savedItem = await inventoryItem.save();
     
     // Invalidate relevant report caches after scan and save
-    const cacheKeysToInvalidate = [
+    const reportCacheKeysToInvalidate = [
         'inventory', 'expired', 'nearing', 'dispensed', 'redistribution'
     ];
 
-    for (const reportTypeToClear of cacheKeysToInvalidate) {
+    for (const reportTypeToClear of reportCacheKeysToInvalidate) {
         const cacheKey = generateReportCacheKey(reportTypeToClear, userId, facilityObjectId, { startDate: null, endDate: null });
         await deleteCache(cacheKey);
     }
@@ -204,6 +222,14 @@ export const scanAndSaveInventory = asyncHandler(async (req, res) => {
       targetId: savedItem._id,
       message: `${drugName} added to inventory by ${req.user.name} via QR scan`,
     });
+
+    // ✨ CORE FIX: Invalidate ALL activity log cache keys for this facility
+    const activityLogWildcardKey = `activityLogs:${userId}:${getFacilityIdString(facilityObjectId)}:*`;
+    await deleteCache(activityLogWildcardKey);
+    await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, {})); // Default "all" filter
+    await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, { module: 'Inventory' }));
+    await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, { dateRange: 'today' }));
+
 
     await checkAndCreateExpiryNotification(savedItem);
     await checkStockLevelNotification(savedItem);
@@ -310,11 +336,11 @@ export const updateInventoryItem = asyncHandler(async (req, res) => {
   }
 
   // Invalidate relevant report caches after updating
-  const cacheKeysToInvalidate = [
+  const reportCacheKeysToInvalidate = [
       'inventory', 'expired', 'nearing', 'dispensed', 'redistribution'
   ];
 
-  for (const reportTypeToClear of cacheKeysToInvalidate) {
+  for (const reportTypeToClear of reportCacheKeysToInvalidate) {
       const cacheKey = generateReportCacheKey(reportTypeToClear, userId, facilityObjectId, { startDate: null, endDate: null });
       await deleteCache(cacheKey);
   }
@@ -328,6 +354,14 @@ export const updateInventoryItem = asyncHandler(async (req, res) => {
     message: `${req.user.name} updated ${updatedItem.drugName} batch ${updatedItem.batchNumber}`,
     facility: facilityObjectId
   });
+
+  // ✨ CORE FIX: Invalidate ALL activity log cache keys for this facility
+  const activityLogWildcardKey = `activityLogs:${userId}:${getFacilityIdString(facilityObjectId)}:*`;
+  await deleteCache(activityLogWildcardKey);
+  await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, {})); // Default "all" filter
+  await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, { module: 'Inventory' }));
+  await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, { dateRange: 'today' }));
+
 
   await checkAndCreateExpiryNotification(updatedItem);
   await checkStockLevelNotification(updatedItem);
@@ -364,11 +398,11 @@ export const deleteInventoryItem = asyncHandler(async (req, res) => {
   await item.deleteOne();
 
   // Invalidate relevant report caches after deletion
-  const cacheKeysToInvalidate = [
+  const reportCacheKeysToInvalidate = [
       'inventory', 'expired', 'nearing', 'dispensed', 'redistribution'
   ];
 
-  for (const reportTypeToClear of cacheKeysToInvalidate) {
+  for (const reportTypeToClear of reportCacheKeysToInvalidate) {
       const cacheKey = generateReportCacheKey(reportTypeToClear, userId, facilityObjectId, { startDate: null, endDate: null });
       await deleteCache(cacheKey);
   }
@@ -382,6 +416,14 @@ export const deleteInventoryItem = asyncHandler(async (req, res) => {
     message: `${req.user.name} deleted ${item.drugName} batch ${item.batchNumber}`,
     facility: facilityObjectId
   });
+
+  // ✨ CORE FIX: Invalidate ALL activity log cache keys for this facility
+  const activityLogWildcardKey = `activityLogs:${userId}:${getFacilityIdString(facilityObjectId)}:*`;
+  await deleteCache(activityLogWildcardKey);
+  await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, {})); // Default "all" filter
+  await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, { module: 'Inventory' }));
+  await deleteCache(generateActivityLogCacheKey(userId, facilityObjectId, { dateRange: 'today' }));
+
   
   res.status(200).json({ message: 'Item removed' });
 });
