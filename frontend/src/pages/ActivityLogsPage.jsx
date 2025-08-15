@@ -23,7 +23,6 @@ const getModuleIcon = (module) => {
     switch (module) {
         case 'Dispensation': return <ClipboardList className="h-4 w-4" />;
         case 'Redistribution': return <Truck className="h-4 w-4" />;
-        case 'User': return <User className="h-4 w-4" />;
         case 'Inventory': return <Package className="h-4 w-4" />;
         default: return <FileText className="h-4 w-4" />;
     }
@@ -33,7 +32,6 @@ const getModuleColor = (module) => {
     switch (module) {
         case 'Dispensation': return 'bg-green-500/20 text-green-300';
         case 'Redistribution': return 'bg-purple-500/20 text-purple-300';
-        case 'Users': return 'bg-yellow-500/20 text-yellow-300';
         case 'Inventory': return 'bg-blue-500/20 text-blue-300';
         default: return 'bg-gray-600/20 text-gray-200';
     }
@@ -153,7 +151,6 @@ const ActivityLogsPage = () => {
                         <option value="all">All Modules</option>
                         <option value="Dispensation">Dispensation</option>
                         <option value="Redistribution">Redistribution</option>
-                        <option value="Users">Users</option>
                         <option value="inventory">Inventory</option>
                     </select>
                     <select
