@@ -1,19 +1,25 @@
+// backend/controllers/reportController.js
+
 import asyncHandler from 'express-async-handler';
 import Inventory from '../models/inventoryModel.js';
 import Dispensation from '../models/dispensationModel.js';
 import Redistribution from '../models/redistributionModel.js';
 import Facility from '../models/facilityModel.js';
 import mongoose from 'mongoose';
-import { setCache, getCache } from '../utils/cache.js'; // Import Redis cache utilities
+import { setCache, getCache } from '../utils/cache.js';
 
-// Helper to generate a unique cache key for each report type and user/facility
+// Helper to ensure facility ID is consistently a string for cache keys/comparisons
+const getFacilityIdString = (facility) => {
+  if (!facility) return 'no-facility';
+  if (typeof facility === 'string') return facility;
+  if (facility._id) return facility._id.toString();
+  if (facility instanceof mongoose.Types.ObjectId) return facility.toString();
+  return 'no-facility';
+};
+
+// Helper to generate a unique cache key for reports (must match reportController.js logic)
 const generateReportCacheKey = (reportType, userId, facilityId, dateRange) => {
-  // Ensure facilityId is a simple string.
-  // If facilityId is a populated Mongoose object, access its _id property.
-  // If it's already an ObjectId or string, toString() will work as expected.
-  const facilityIdString = facilityId
-    ? (facilityId._id ? facilityId._id.toString() : facilityId.toString())
-    : 'no-facility';
+  const facilityIdString = getFacilityIdString(facilityId);
   const startDate = dateRange?.startDate || 'no-start';
   const endDate = dateRange?.endDate || 'no-end';
   return `report:${reportType}:${userId}:${facilityIdString}:${startDate}:${endDate}`;
@@ -34,51 +40,50 @@ const formatDate = (date) => {
 // @access  Private
 export const getReports = asyncHandler(async (req, res) => {
     const { reportType } = req.params;
-    const { startDate, endDate } = req.query; // Date range from frontend
-    const userId = req.user._id; // Get user ID from authenticated user
-    const facilityId = req.user.facility; // Get facility ID from authenticated user (likely an ObjectId or populated object)
+    const { startDate, endDate } = req.query;
+    const userId = req.user._id;
 
-    // Generate a unique cache key for this specific report request
-    const cacheKey = generateReportCacheKey(reportType, userId, facilityId, { startDate, endDate });
+    const facilityId = req.user.facility;
+    if (!facilityId) {
+        res.status(400);
+        throw new Error('User facility not found. Cannot generate report.');
+    }
 
-    // 1. Try to get data from Redis cache first
+    let facilityObjectId;
+    const facilityIdString = getFacilityIdString(facilityId);
+    if (!mongoose.Types.ObjectId.isValid(facilityIdString)) {
+        res.status(400);
+        throw new Error('Invalid facility ID format for user. Cannot generate report.');
+    }
+    facilityObjectId = new mongoose.Types.ObjectId(facilityIdString);
+
+    const cacheKey = generateReportCacheKey(reportType, userId, facilityObjectId, { startDate, endDate });
+
     const cachedData = await getCache(cacheKey);
     if (cachedData) {
         return res.status(200).json(cachedData);
     }
 
-    let query = { facility: new mongoose.Types.ObjectId(facilityId) };
-
-    // Apply date range filter if provided
+    let commonQueryFilters = {};
     if (startDate && endDate) {
         const start = new Date(startDate);
         const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999); // Set to end of the day
-
-        // Determine which date field to filter by based on report type
-        let dateField;
-        if (reportType === 'dispensed') {
-            dateField = 'dateDispensed';
-        } else if (reportType === 'redistribution') {
-            dateField = 'createdAt'; // Or receivedAt/declinedAt if more specific
-        } else if (reportType === 'inventory' || reportType === 'expired' || reportType === 'nearing') {
-            dateField = 'receivedDate'; // Or createdAt, depending on what 'date' means for inventory reports
-        }
-
-        if (dateField) {
-            query[dateField] = { $gte: start, $lte: end };
-        }
+        end.setHours(23, 59, 59, 999);
+        commonQueryFilters.dateRange = { $gte: start, $lte: end };
     }
 
     let data = [];
 
     switch (reportType) {
         case 'expired':
-            // Expired drugs: expiryDate is less than current date
-            query.expiryDate = { $lt: new Date() };
-            data = await Inventory.find(query)
+            const expiredQuery = {
+                facility: facilityObjectId,
+                expiryDate: { $lt: new Date() },
+                currentStock: { $gt: 0 }
+            };
+            data = await Inventory.find(expiredQuery)
                 .select('drugName currentStock expiryDate')
-                .populate('facility', 'name'); // Populate facility name if needed
+                .populate('facility', 'name');
             data = data.map(item => ({
                 drug: item.drugName,
                 quantity: item.currentStock,
@@ -87,11 +92,14 @@ export const getReports = asyncHandler(async (req, res) => {
             break;
 
         case 'nearing':
-            // Nearing expiry (e.g., within next 90 days)
             const ninetyDaysFromNow = new Date();
             ninetyDaysFromNow.setDate(ninetyDaysFromNow.getDate() + 90);
-            query.expiryDate = { $gte: new Date(), $lte: ninetyDaysFromNow };
-            data = await Inventory.find(query)
+            const nearingQuery = {
+                facility: facilityObjectId,
+                expiryDate: { $gte: new Date(), $lte: ninetyDaysFromNow },
+                currentStock: { $gt: 0 }
+            };
+            data = await Inventory.find(nearingQuery)
                 .select('drugName currentStock expiryDate')
                 .populate('facility', 'name');
             data = data.map(item => ({
@@ -102,49 +110,72 @@ export const getReports = asyncHandler(async (req, res) => {
             break;
 
         case 'dispensed':
-            // Dispensation Summary
-            data = await Dispensation.find(query)
-                .populate('drug', 'drugName') // Populate drugName from Inventory
-                .populate('dispensedBy', 'name') // Populate dispensedBy user name
+            let dispensedQuery = { facility: facilityObjectId };
+            if (commonQueryFilters.dateRange) {
+                dispensedQuery.dateDispensed = commonQueryFilters.dateRange;
+            }
+            data = await Dispensation.find(dispensedQuery)
+                .populate('drug', 'drugName batchNumber')
+                .populate('dispensedBy', 'name')
                 .select('drug quantityDispensed dispensedTo note dateDispensed');
 
             data = data.map(item => ({
-                drug: item.drug?.drugName || 'N/A', // Use optional chaining
+                drug: item.drug?.drugName || 'N/A',
+                batch: item.drug?.batchNumber || 'N/A',
                 quantity: item.quantityDispensed,
                 date: formatDate(item.dateDispensed),
-                patient: item.dispensedTo, // Assuming dispensedTo is the patient name
+                patient: item.dispensedTo,
                 dispensedBy: item.dispensedBy?.name || 'N/A'
             }));
             break;
 
         case 'redistribution':
-            // Redistribution Log
-            // Note: For redistribution, we might want to show requests *from* or *to* the facility.
-            // For simplicity, let's assume 'fromFacility' for now, or adjust the query to include 'toFacility'
-            data = await Redistribution.find({
-                $or: [{ fromFacility: facilityId }, { toFacility: facilityId }],
-                ...query // Apply date range if present
-            })
-                .populate('drug', 'drugName')
+            const facilityMatchQuery = {
+                $or: [
+                    { fromFacility: facilityObjectId },
+                    { toFacility: facilityObjectId }
+                ]
+            };
+
+            let finalRedistributionQuery;
+            if (commonQueryFilters.dateRange) {
+                finalRedistributionQuery = {
+                    $and: [
+                        facilityMatchQuery,
+                        { createdAt: commonQueryFilters.dateRange }
+                    ]
+                };
+            } else {
+                finalRedistributionQuery = facilityMatchQuery;
+            }
+
+            data = await Redistribution.find(finalRedistributionQuery)
+                .populate('drug', 'drugName batchNumber') // Explicitly populate drugName and batchNumber
                 .populate('fromFacility', 'name')
                 .populate('toFacility', 'name')
                 .populate('requestedBy', 'name')
-                .select('drug quantity fromFacility toFacility createdAt status');
+                .select('quantity reason expiryDate status createdAt updatedAt declinedAt'); // Select only desired fields from Redistribution model
 
+            // Map the data to flatten populated fields and format dates
             data = data.map(item => ({
-                drug: item.drug?.drugName || 'N/A',
-                qty: item.quantity,
-                from: item.fromFacility?.name || 'N/A',
-                to: item.toFacility?.name || 'N/A',
-                date: formatDate(item.createdAt),
+                drug: item.drug?.drugName || 'N/A', // Access drugName from populated drug object
+                batch: item.drug?.batchNumber || 'N/A', // Access batchNumber from populated drug object
+                quantity: item.quantity,
+                from: item.fromFacility?.name || 'N/A', // Access name from populated fromFacility object
+                to: item.toFacility?.name || 'N/A',     // Access name from populated toFacility object
+                reason: item.reason,
+                expiryDate: formatDate(item.expiryDate),
                 status: item.status,
-                requestedBy: item.requestedBy?.name || 'N/A'
+                requestedBy: item.requestedBy?.name || 'N/A', // Access name from populated requestedBy object
+                createdAt: formatDate(item.createdAt),
+                updatedAt: formatDate(item.updatedAt),
+                declinedAt: formatDate(item.declinedAt)
             }));
             break;
 
         case 'inventory':
-            // Inventory Summary (all current inventory items)
-            data = await Inventory.find(query)
+            const inventoryQuery = { facility: facilityObjectId };
+            data = await Inventory.find(inventoryQuery)
                 .select('drugName currentStock location status expiryDate supplier');
             data = data.map(item => ({
                 drug: item.drugName,
@@ -161,7 +192,6 @@ export const getReports = asyncHandler(async (req, res) => {
             throw new Error('Invalid report type specified');
     }
 
-    // 2. Cache the fetched data before sending the response
     await setCache(cacheKey, data);
 
     res.json(data);

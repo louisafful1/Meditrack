@@ -17,7 +17,7 @@ const ReportsPage = () => {
   const user = useSelector((state) => state.auth.user);
   const facility = useSelector((state) => state.facility.facility);
 
-  const [reportType, setReportType] = useState("expired");
+  const [reportType, setReportType] = useState("redistribution"); // Changed initial state for easier testing
   const [dateRange, setDateRange] = useState({
     startDate: null,
     endDate: null,
@@ -54,7 +54,26 @@ const ReportsPage = () => {
 
   const getTableHeaders = (data) => {
     if (data.length === 0) return [];
-    return Object.keys(data[0]);
+    // Ensure data[0] is not null/undefined before Object.keys
+    if (data[0]) {
+      return Object.keys(data[0]);
+    }
+    return [];
+  };
+
+  // Helper function to render table cell data properly
+  const renderTableCell = (item, key) => {
+    // Handle specific keys that are populated objects
+    if (key === 'from' || key === 'to' || key === 'requestedBy') {
+      // Check if the item[key] is an object and has a 'name' property
+      return item[key]?.name || 'N/A'; 
+    }
+    // For date fields, ensure proper formatting if not already
+    if (key === 'date' || key === 'expiryDate' || key === 'receivedAt' || key === 'declinedAt') {
+      return item[key] ? new Date(item[key]).toLocaleDateString('en-CA') : 'N/A';
+    }
+    // Default rendering for other keys
+    return item[key] === null || item[key] === undefined ? "N/A" : String(item[key]);
   };
 
   return (
@@ -166,7 +185,8 @@ const ReportsPage = () => {
                   <tr key={idx} className="hover:bg-gray-800 border-b border-gray-700">
                     {getTableHeaders(currentReportData).map((key, i) => (
                       <td key={i} className="py-2 px-4">
-                        {item[key] === null || item[key] === undefined ? "N/A" : String(item[key])}
+                        {/* Use the new renderTableCell helper */}
+                        {renderTableCell(item, key)}
                       </td>
                     ))}
                   </tr>

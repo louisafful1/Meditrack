@@ -5,44 +5,63 @@ import Inventory from "../models/inventoryModel.js";
 import Facility from "../models/facilityModel.js";
 import { logActivity } from "../utils/logActivity.js";
 import RedistributionLog from "../models/aiModels/RedistributionLog.js";
-import mongoose from "mongoose"; // Import mongoose for ObjectId comparison
+import mongoose from "mongoose";
 import { createRedistributionNotification } from "../utils/notificationUtils.js";
+import { deleteCache } from '../utils/cache.js';
+
+// Helper to ensure facility ID is consistently a string for cache keys/comparisons
+const getFacilityIdString = (facility) => {
+  if (!facility) return 'no-facility';
+  if (typeof facility === 'string') return facility;
+  if (facility._id) return facility._id.toString();
+  if (facility instanceof mongoose.Types.ObjectId) return facility.toString();
+  return 'no-facility';
+};
+
+// Helper to generate a unique cache key for reports (must match reportController.js logic)
+const generateReportCacheKey = (reportType, userId, facilityId, dateRange) => {
+  const facilityIdString = getFacilityIdString(facilityId);
+  const startDate = dateRange?.startDate || 'no-start';
+  const endDate = dateRange?.endDate || 'no-end';
+  return `report:${reportType}:${userId}:${facilityIdString}:${startDate}:${endDate}`;
+};
+
 
 // @desc    Create redistribution request
 // @route   POST /api/redistribution
 // @access  Private
-
 export const createRedistribution = asyncHandler(async (req, res) => {
     const { drug, quantity, toFacility, reason } = req.body;
+    const userId = req.user._id;
+
+    const userFacilityId = req.user.facility && req.user.facility._id
+        ? req.user.facility._id
+        : req.user.facility;
+    const fromFacilityObjectId = new mongoose.Types.ObjectId(userFacilityId);
+
 
     if (!drug || !quantity || !toFacility || !reason) {
         res.status(400);
         throw new Error("All required fields must be filled.");
     }
 
-    const fromFacility = req.user.facility;
-
-    // Prevent redistributing within the same facility
-    if (fromFacility.toString() === toFacility.toString()) {
+    if (fromFacilityObjectId.equals(new mongoose.Types.ObjectId(toFacility))) {
         res.status(400);
         throw new Error("Cannot redistribute drugs within the same facility.");
     }
 
-    // Check if the destination facility exists
     const receivingFacility = await Facility.findById(toFacility);
     if (!receivingFacility) {
         res.status(404);
         throw new Error("Receiving facility not found.");
     }
 
-    // Check if the drug exists and belongs to the requesting user's facility
-    const inventoryItem = await Inventory.findOne({ _id: drug, facility: fromFacility });
+    const inventoryItem = await Inventory.findOne({ _id: drug, facility: fromFacilityObjectId });
     if (!inventoryItem) {
         res.status(404);
         throw new Error("Drug not found in your facility's inventory.");
     }
 
-    // Check for sufficient stock
     if (inventoryItem.currentStock < quantity) {
         res.status(400);
         throw new Error(`Insufficient stock. Only ${inventoryItem.currentStock} available.`);
@@ -53,21 +72,27 @@ export const createRedistribution = asyncHandler(async (req, res) => {
     const redistribution = await Redistribution.create({
         drug,
         quantity,
-        fromFacility,
+        fromFacility: fromFacilityObjectId,
         toFacility,
         reason,
         expiryDate,
-        requestedBy: req.user._id,
+        requestedBy: userId,
     });
 
+    // Invalidate 'redistribution' report cache for the requesting facility
+    const requestingFacilityCacheKey = generateReportCacheKey('redistribution', userId, fromFacilityObjectId, { startDate: null, endDate: null });
+    await deleteCache(requestingFacilityCacheKey);
+
+
     await logActivity({
-        userId: req.user._id,
+        userId: userId,
         action: "Requested Redistribution",
         module: "Redistribution",
         targetId: redistribution._id,
-        message: `${req.user.name} requested redistribution of ${quantity} ${inventoryItem.drugName} to ${toFacility}`,
+        message: `${req.user.name} requested redistribution of ${quantity} ${inventoryItem.drugName} to ${receivingFacility.name}`,
+        facility: fromFacilityObjectId
     });
-          await createRedistributionNotification(redistribution, "REDISTRIBUTION_CREATED");
+    await createRedistributionNotification(redistribution, "REDISTRIBUTION_CREATED");
 
     res.status(201).json(redistribution);
 });
@@ -77,10 +102,13 @@ export const createRedistribution = asyncHandler(async (req, res) => {
 // @route   GET /api/redistribution
 // @access  Private
 export const getRedistributions = asyncHandler(async (req, res) => {
-    const facilityId = req.user.facility;
+    const userFacilityId = req.user.facility && req.user.facility._id
+        ? req.user.facility._id
+        : req.user.facility;
+    const facilityObjectId = new mongoose.Types.ObjectId(userFacilityId);
 
     const redistributions = await Redistribution.find({
-        $or: [{ fromFacility: facilityId }, { toFacility: facilityId }],
+        $or: [{ fromFacility: facilityObjectId }, { toFacility: facilityObjectId }],
     })
         .populate("drug")
         .populate("fromFacility")
@@ -95,149 +123,156 @@ export const getRedistributions = asyncHandler(async (req, res) => {
 // @route   PUT /api/redistributions/:id/approve
 // @access  Private (only receiving facility users)
 export const approveRedistribution = asyncHandler(async (req, res) => {
-   // Start a Mongoose session for transaction
     const session = await mongoose.startSession();
     session.startTransaction();
-     try {
-    const redistribution = await Redistribution.findById(req.params.id)
-        .populate("drug")
-        .populate("fromFacility")
-        .populate("toFacility")
-        .populate("requestedBy")
-        .session(session);
+    try {
+        const redistribution = await Redistribution.findById(req.params.id)
+            .populate("drug")
+            .populate("fromFacility")
+            .populate("toFacility")
+            .populate("requestedBy")
+            .session(session);
 
-    if (!redistribution) {
-        res.status(404);
-        throw new Error("Redistribution not found");
-    }
+        if (!redistribution) {
+            res.status(404);
+            throw new Error("Redistribution not found");
+        }
 
-    // Ensure req.user.facility is an ObjectId for direct comparison
-    const userFacilityObjectId = mongoose.Types.ObjectId.isValid(req.user.facility)
-        ? new mongoose.Types.ObjectId(req.user.facility)
-        : (req.user.facility && req.user.facility._id ? new mongoose.Types.ObjectId(req.user.facility._id) : null);
+        const userFacilityId = req.user.facility && req.user.facility._id
+            ? req.user.facility._id
+            : req.user.facility;
+        const currentUserFacilityObjectId = new mongoose.Types.ObjectId(userFacilityId);
 
-    // Ensure redistribution.toFacility._id is an ObjectId
-    const toFacilityObjectId = redistribution.toFacility?._id;
+        const toFacilityObjectId = redistribution.toFacility?._id;
 
-    // Perform comparison using .equals() for ObjectIds
-    const isAuthorized = userFacilityObjectId && toFacilityObjectId && userFacilityObjectId.equals(toFacilityObjectId);
+        const isAuthorized = currentUserFacilityObjectId && toFacilityObjectId && currentUserFacilityObjectId.equals(toFacilityObjectId);
 
-
-    // Authorization Check: Only the 'toFacility' (receiving facility) can approve the request
-    if (!isAuthorized) {
-        res.status(403);
-        throw new Error("Not authorized to approve this redistribution");
-    }
-    if (redistribution.status !== "pending") { // Only pending requests can be approved
+        if (!isAuthorized) {
+            res.status(403);
+            throw new Error("Not authorized to approve this redistribution");
+        }
+        if (redistribution.status !== "pending") {
             res.status(400);
             throw new Error(`Redistribution status is '${redistribution.status}', cannot approve.`);
         }
 
-    // Deduct stock from fromFacility
-    const fromStock = await Inventory.findOne({
-        facility: redistribution.fromFacility._id,
-        drugName: redistribution.drug.drugName,
-        batchNumber: redistribution.drug.batchNumber,
-    }).session(session);
+        const fromStock = await Inventory.findOne({
+            facility: redistribution.fromFacility._id,
+            drugName: redistribution.drug.drugName,
+            batchNumber: redistribution.drug.batchNumber,
+        }).session(session);
 
-    if (!fromStock || fromStock.currentStock < redistribution.quantity) {
-        res.status(400);
-        throw new Error("Insufficient stock in sending facility");
-    }
+        if (!fromStock || fromStock.currentStock < redistribution.quantity) {
+            res.status(400);
+            throw new Error("Insufficient stock in sending facility");
+        }
 
-    fromStock.currentStock -= redistribution.quantity;
+        fromStock.currentStock -= redistribution.quantity;
 
-       if (fromStock.currentStock === 0) {
+        if (fromStock.currentStock === 0) {
             fromStock.status = "Out of Stock";
-        } else if (fromStock.currentStock > 0 && fromStock.currentStock < fromStock.reorderLevel) {
+        } else if (fromStock.currentStock > 0 && fromStock.currentStock <= (fromStock.reorderLevel || 0)) {
             fromStock.status = "Low Stock";
         } else {
             fromStock.status = "Adequate";
         }
-    await fromStock.save({ session });
+        await fromStock.save({ session });
 
-    // Add stock to toFacility (or create new inventory item)
-    let toStock = await Inventory.findOne({
-        facility: redistribution.toFacility._id,
-        drugName: redistribution.drug.drugName,
-        batchNumber: redistribution.drug.batchNumber,
-    }).session(session);
+        let toStock = await Inventory.findOne({
+            facility: redistribution.toFacility._id,
+            drugName: redistribution.drug.drugName,
+            batchNumber: redistribution.drug.batchNumber,
+        }).session(session);
 
-    if (toStock) {
-        toStock.currentStock += redistribution.quantity;
-        if (toStock.currentStock === 0) { 
+        if (toStock) {
+            toStock.currentStock += redistribution.quantity;
+            if (toStock.currentStock === 0) {
                 toStock.status = "Out of Stock";
-            } else if (toStock.currentStock > 0 && toStock.currentStock < toStock.reorderLevel) {
+            } else if (toStock.currentStock > 0 && toStock.currentStock <= (toStock.reorderLevel || 0)) {
                 toStock.status = "Low Stock";
             } else {
                 toStock.status = "Adequate";
             }
-            await toStock.save({ session }); 
-    } else {
-            // If new item, calculate its initial status
+            await toStock.save({ session });
+        } else {
             let initialNewStockStatus;
+            const reorderLevelForNew = redistribution.drug.reorderLevel || 10;
             if (redistribution.quantity === 0) {
                 initialNewStockStatus = "Out of Stock";
-            } else if (redistribution.quantity > 0 && redistribution.quantity < (redistribution.drug.reorderLevel || 10)) { 
+            } else if (redistribution.quantity > 0 && redistribution.quantity <= reorderLevelForNew) {
                 initialNewStockStatus = "Low Stock";
             } else {
                 initialNewStockStatus = "Adequate";
             }
-        toStock = await Inventory.create([{
-            drugName: redistribution.drug.drugName,
-            batchNumber: redistribution.drug.batchNumber,
-            currentStock: redistribution.quantity,
-            supplier: redistribution.drug.supplier || "Redistributed",
-            expiryDate: redistribution.drug.expiryDate,
-            receivedDate: new Date(),
-            status: initialNewStockStatus,
-            location: "Redistributed Stock",
-            facility: redistribution.toFacility._id,
-            createdBy: req.user._id,
-            reorderLevel: redistribution.drug.reorderLevel || 10,
+            toStock = await Inventory.create([{
+                drugName: redistribution.drug.drugName,
+                batchNumber: redistribution.drug.batchNumber,
+                currentStock: redistribution.quantity,
+                supplier: redistribution.drug.supplier || "Redistributed",
+                expiryDate: redistribution.drug.expiryDate,
+                receivedDate: new Date(),
+                status: initialNewStockStatus,
+                location: "Redistributed Stock",
+                facility: redistribution.toFacility._id,
+                createdBy: req.user._id,
+                reorderLevel: reorderLevelForNew,
+            }], { session });
+            toStock = toStock[0];
+        }
+
+        redistribution.status = "completed";
+        redistribution.receivedBy = req.user._id;
+        redistribution.receivedAt = new Date();
+        await redistribution.save({ session });
+
+        await RedistributionLog.create([{
+            redistributionId: redistribution._id,
+            drug: redistribution.drug._id,
+            quantity: redistribution.quantity,
+            fromFacility: redistribution.fromFacility._id,
+            toFacility: redistribution.toFacility._id,
+            reason: redistribution.reason,
+            expiryDate: redistribution.expiryDate,
+            requestedBy: redistribution.requestedBy._id,
+            receivedBy: req.user._id,
+            requestedAt: redistribution.createdAt,
+            receivedAt: redistribution.receivedAt,
+            status: redistribution.status,
         }], { session });
-        toStock = toStock[0];
-    }
 
-    // Update redistribution
-    redistribution.status = "completed";
-    redistribution.receivedBy = req.user._id;
-    redistribution.receivedAt = new Date();
-    await redistribution.save({ session });
+        await logActivity({
+            userId: req.user._id,
+            facility: currentUserFacilityObjectId,
+            action: "Approved Redistribution",
+            module: "Redistribution",
+            targetId: redistribution._id,
+            message: `${req.user.name} approved redistribution of ${redistribution.quantity} ${redistribution.drug.drugName} from ${redistribution.fromFacility.name} to ${redistribution.toFacility.name}`,
+        }, { session });
 
-    //log for ai training
-    await RedistributionLog.create([{
-        redistributionId: redistribution._id,
-        drug: redistribution.drug._id,
-        quantity: redistribution.quantity,
-        fromFacility: redistribution.fromFacility._id,
-        toFacility: redistribution.toFacility._id,
-        reason: redistribution.reason,
-        expiryDate: redistribution.expiryDate,
-        requestedBy: redistribution.requestedBy._id, 
-        receivedBy: req.user._id,
-        requestedAt: redistribution.createdAt,
-        receivedAt: redistribution.receivedAt,
-        status: redistribution.status,
-    }], { session });
+        await createRedistributionNotification(redistribution, "REDISTRIBUTION_APPROVED", { session });
 
-    await logActivity({
-        userId: req.user._id,
-        facility: req.user.facility,
-        action: "Approved Redistribution",
-        module: "Redistribution",
-        targetId: redistribution._id,
-        message: `${req.user.name} approved redistribution of ${redistribution.quantity} ${redistribution.drug.drugName}`,
-    }, { session });
+        // Invalidate 'inventory', 'expired', 'nearing', and 'redistribution' caches for BOTH affected facilities
+        const reportTypesToInvalidate = ['inventory', 'expired', 'nearing', 'redistribution'];
 
-      await createRedistributionNotification(redistribution, "REDISTRIBUTION_APPROVED", { session });
+        // Invalidate caches for the FROM facility (sending)
+        for (const reportType of reportTypesToInvalidate) {
+            const cacheKey = generateReportCacheKey(reportType, redistribution.requestedBy._id, redistribution.fromFacility._id, { startDate: null, endDate: null });
+            await deleteCache(cacheKey);
+        }
+
+        // Invalidate caches for the TO facility (receiving - current user's facility)
+        for (const reportType of reportTypesToInvalidate) {
+            const cacheKey = generateReportCacheKey(reportType, req.user._id, redistribution.toFacility._id, { startDate: null, endDate: null });
+            await deleteCache(cacheKey);
+        }
+
+
         await session.commitTransaction();
         session.endSession();
-    res.status(200).json({ message: "Redistribution approved", redistribution });
-     } catch (error) {
+        res.status(200).json({ message: "Redistribution approved", redistribution });
+    } catch (error) {
         await session.abortTransaction();
         session.endSession();
-        // Re-throw the error to be caught by asyncHandler's error handling middleware
         throw error;
     }
 });
@@ -247,28 +282,25 @@ export const approveRedistribution = asyncHandler(async (req, res) => {
 // @route   PUT /api/redistribution/decline/:id
 // @access  Private
 export const declineRedistribution = asyncHandler(async (req, res) => {
-    // FIX: Populate all necessary fields for consistency and potential notifications/logs
     const redistribution = await Redistribution.findById(req.params.id)
-        .populate("drug") // Added
-        .populate("fromFacility") // Added
+        .populate("drug")
+        .populate("fromFacility")
         .populate("toFacility")
-        .populate("requestedBy"); // Added
+        .populate("requestedBy");
 
     if (!redistribution) {
         res.status(404);
         throw new Error("Redistribution not found");
     }
 
-    // Ensure req.user.facility is an ObjectId for direct comparison
-    const userFacilityObjectId = mongoose.Types.ObjectId.isValid(req.user.facility)
-        ? new mongoose.Types.ObjectId(req.user.facility)
-        : (req.user.facility && req.user.facility._id ? req.user.facility._id : null);
+    const userFacilityId = req.user.facility && req.user.facility._id
+        ? req.user.facility._id
+        : req.user.facility;
+    const currentUserFacilityObjectId = new mongoose.Types.ObjectId(userFacilityId);
 
-    // Ensure redistribution.toFacility._id is an ObjectId
     const toFacilityObjectId = redistribution.toFacility?._id;
 
-    // Perform comparison using .equals() for ObjectIds
-    const isAuthorized = userFacilityObjectId && toFacilityObjectId && userFacilityObjectId.equals(toFacilityObjectId);
+    const isAuthorized = currentUserFacilityObjectId && toFacilityObjectId && currentUserFacilityObjectId.equals(toFacilityObjectId);
 
     if (!isAuthorized) {
         res.status(403);
@@ -285,22 +317,27 @@ export const declineRedistribution = asyncHandler(async (req, res) => {
     redistribution.declinedAt = new Date();
     await redistribution.save();
 
-    // Log Activity 
     await logActivity({
         userId: req.user._id,
+        facility: currentUserFacilityObjectId,
         action: "Declined Redistribution",
         module: "Redistribution",
         targetId: redistribution._id,
         message: `${req.user.name} declined redistribution of ${redistribution.quantity} ${redistribution.drug.drugName} to ${redistribution.toFacility.name}`,
     });
 
-      await createRedistributionNotification(redistribution, "REDISTRIBUTION_DECLINED");
+    await createRedistributionNotification(redistribution, "REDISTRIBUTION_DECLINED");
+
+    // Invalidate 'redistribution' report cache for the receiving facility (current user's)
+    const currentUserRedistributionCacheKey = generateReportCacheKey('redistribution', req.user._id, currentUserFacilityObjectId, { startDate: null, endDate: null });
+    await deleteCache(currentUserRedistributionCacheKey);
+
 
     res.status(200).json({ message: "Redistribution declined", redistribution });
 });
 
 
-// @desc    Update redistribution status
+// @desc    Update redistribution status (generic - likely not used for approve/decline)
 // @route   PUT /api/redistribution/:id
 // @access  Private
 export const updateRedistributionStatus = asyncHandler(async (req, res) => {

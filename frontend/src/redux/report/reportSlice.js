@@ -1,9 +1,12 @@
+// frontend/src/redux/report/reportSlice.js
+
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import reportService from './reportService'; 
-import { toast } from 'react-toastify';
+import reportService from './reportService';
+// import { toast } from 'react-toastify'; // ✨ REMOVE THIS IMPORT if toasts are only handled in components
+
 
 const initialState = {
-    currentReportData: [], 
+    currentReportData: [],
     isError: false,
     isSuccess: false,
     isLoading: false,
@@ -15,7 +18,6 @@ export const getReport = createAsyncThunk(
     "report/getReport",
     async ({ reportType, dateRange }, thunkAPI) => {
         try {
- 
             return await reportService.getReport(reportType, dateRange);
         } catch (error) {
             const message =
@@ -24,7 +26,7 @@ export const getReport = createAsyncThunk(
                     error.response.data.message) ||
                 error.message ||
                 error.toString();
-            toast.error(message);
+            // ✨ REMOVED: toast.error(message); // Remove toast from thunk
             return thunkAPI.rejectWithValue(message);
         }
     }
@@ -46,21 +48,26 @@ const reportSlice = createSlice({
         builder
             .addCase(getReport.pending, (state) => {
                 state.isLoading = true;
-                state.isError = false; 
+                state.isError = false;
                 state.isSuccess = false;
-                state.message = ""; 
+                state.message = "";
             })
             .addCase(getReport.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.isSuccess = true;
-                state.currentReportData = action.payload; 
-                state.message = "Report data fetched successfully!";
+                state.isError = false; // Ensure isError is false on success
+                state.message = ""; // Clear any previous error messages
+                state.currentReportData = action.payload;
+                console.log("REPORT SLICE: getReport.fulfilled - Payload:", action.payload); // Debugging log
+                console.log("REPORT SLICE: State after fulfilled:", state.currentReportData); // Debugging log
             })
             .addCase(getReport.rejected, (state, action) => {
                 state.isLoading = false;
                 state.isError = true;
                 state.message = action.payload;
-                state.currentReportData = []; 
+                state.currentReportData = [];
+                // ✨ REMOVED: toast.error(action.payload); // Remove toast from reducer
+                console.error("REPORT SLICE: getReport.rejected - Error:", state.message); // Debugging log
             });
     },
 });
