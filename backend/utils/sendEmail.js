@@ -18,7 +18,7 @@ export const sendEmail = async ({ subject, message, send_to, sent_from }) => {
     })
 
     const options = {
-        from: sent_from,
+        from: `"MediTrack Support" <${sent_from}>`,
         to: send_to,
         subject:subject,
         html: message
