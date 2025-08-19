@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useSocket } from "../../hooks/useSocket";
 import { useSelector } from "react-redux";
 import axios from "axios";
+import { useNavigate } from 'react-router-dom';
 
 // Helper to format time ago
 const formatTimeAgo = (createdAt) => {
@@ -178,7 +179,9 @@ const NotificationsPopup = () => {
     const buttonRef = useRef(null);
     const [buttonPosition, setButtonPosition] = useState({ top: 0, right: 0 });
     const [apiNotifications, setApiNotifications] = useState([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(false); // Corrected typo, previously 'false' directly
+
+    const navigate = useNavigate();
 
     // Get user info from Redux
     const { user } = useSelector((state) => state.auth);
@@ -277,16 +280,59 @@ const NotificationsPopup = () => {
 
     // Function to handle deleting notification
     const handleDeleteNotification = async (notificationId, event) => {
-        event.stopPropagation();
+        event.stopPropagation(); // Prevent triggering parent click handler
         try {
             await axios.delete(`/api/notifications/${notificationId}`);
 
             setApiNotifications(prev => prev.filter(notif => notif._id !== notificationId));
             removeNotification(notificationId);
-        } catch (error) {
+        }
+         catch (error) {
             console.error('Error deleting notification:', error);
         }
     };
+
+    // New function to handle clicking on a notification for navigation
+    const handleNotificationClick = async (notification) => {
+        // First, mark the notification as read
+        if (!notification.isRead) {
+            await handleMarkAsRead(notification._id);
+        }
+
+        // Close the notification popup
+        setOpen(false);
+
+        // Determine where to navigate based on notification type
+        switch (notification.type) {
+            case 'DRUG_EXPIRED':
+            case 'DRUG_EXPIRING':
+            case 'LOW_STOCK':
+            case 'OUT_OF_STOCK':
+                // For inventory-related notifications, navigate to the general inventory page
+                // We'll rely on the user to find the item or implement a search/filter on that page
+                navigate(`/inventory`); 
+                break;
+            case 'REDISTRIBUTION_CREATED':
+            case 'REDISTRIBUTION_APPROVED':
+            case 'REDISTRIBUTION_DECLINED':
+            case 'REDISTRIBUTION_COMPLETED':
+                // For redistribution notifications, navigate to the redistribution page
+                // and pass the redistribution ID as state for scrolling
+                if (notification.redistributionId) {
+                    navigate('/redistribution', { state: { highlightId: notification.redistributionId._id || notification.redistributionId } });
+                } else {
+                    // Fallback to general redistribution list if ID is missing
+                    navigate(`/redistribution`);
+                }
+                break;
+            // Add more cases for other notification types if needed
+            default:
+                // Default to a general dashboard or notifications page if no specific route
+                navigate('/dashboard'); 
+                break;
+        }
+    };
+
 
     // Function to handle marking all as read
     const handleMarkAllAsRead = async () => {
@@ -301,19 +347,13 @@ const NotificationsPopup = () => {
                 requestBody.facilityId = typeof user.facility === 'object' ? user.facility._id : user.facility;
             }
 
-            console.log('Marking all notifications as read with:', requestBody);
-
             await axios.put('/api/notifications/mark-all-read', requestBody);
-
-            console.log('API call successful, updating local state...');
 
             setApiNotifications(prev =>
                 prev.map(notif => ({ ...notif, isRead: true }))
             );
 
             markAllNotificationsAsRead();
-
-            console.log('All notifications marked as read successfully');
         } catch (error) {
             console.error('Error marking all notifications as read:', error);
         }
@@ -332,8 +372,6 @@ const NotificationsPopup = () => {
 
             setApiNotifications([]);
             clearNotifications();
-
-            console.log('All notifications cleared successfully');
         } catch (error) {
             console.error('Error clearing all notifications:', error);
         }
@@ -411,7 +449,7 @@ const NotificationsPopup = () => {
                                     >
                                         <div
                                             className="cursor-pointer"
-                                            onClick={() => handleMarkAsRead(notification._id)}
+                                            onClick={() => handleNotificationClick(notification)}
                                         >
                                             <NotificationItemContent notification={notification} />
                                         </div>
