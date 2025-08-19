@@ -53,27 +53,72 @@ const ReportsPage = () => {
   };
 
   const getTableHeaders = (data) => {
-    if (data.length === 0) return [];
-    // Ensure data[0] is not null/undefined before Object.keys
-    if (data[0]) {
-      return Object.keys(data[0]);
-    }
-    return [];
+    if (!data || data.length === 0) return [];
+    
+    // Define columns to exclude from the display
+    const excludedColumns = [
+        '_id', '__v', // Standard MongoDB internal fields
+        'requestedBy', // As per discussion, less necessary for overview
+        'createdAt',   // As per discussion, less necessary for overview
+        'updatedAt',   // As per discussion, less necessary for overview
+        'declinedAt'   // As per discussion, only relevant for specific status
+    ];
+
+    // Dynamically get headers from the first item, filtering out excluded columns
+    return Object.keys(data[0]).filter(key => !excludedColumns.includes(key));
   };
 
   // Helper function to render table cell data properly
   const renderTableCell = (item, key) => {
-    // Handle specific keys that are populated objects
-    if (key === 'from' || key === 'to' || key === 'requestedBy') {
-      // Check if the item[key] is an object and has a 'name' property
-      return item[key]?.name || 'N/A'; 
-    }
-    // For date fields, ensure proper formatting if not already
-    if (key === 'date' || key === 'expiryDate' || key === 'receivedAt' || key === 'declinedAt') {
-      return item[key] ? new Date(item[key]).toLocaleDateString('en-CA') : 'N/A';
-    }
-    // Default rendering for other keys
-    return item[key] === null || item[key] === undefined ? "N/A" : String(item[key]);
+      const value = item[key];
+
+      // Handle date formatting for specific keys
+      if (['expiryDate', 'receivedDate', 'createdAt', 'updatedAt', 'declinedAt'].includes(key)) {
+          // If the date value is null, undefined, or an empty string, return "N/A"
+          if (value === null || value === undefined || value === "") {
+              return "N/A";
+          }
+          try {
+              const dateObj = new Date(value);
+              // Check if the parsed date object is valid
+              if (isNaN(dateObj.getTime())) {
+                  return "Invalid Date"; // Indicate that the date format was unparseable
+              }
+              // Format valid date: 'en-CA' for YYYY-MM-DD consistent format, or 'en-GB' for DD/MM/YYYY
+              return dateObj.toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
+          } catch (e) {
+              // Catch any other unexpected errors during date processing
+              console.error(`Error processing date for key '${key}' with value '${value}':`, e);
+              return "Date Error"; // Generic error for date processing
+          }
+      }
+
+      // Handle non-date fields: null, undefined, or empty strings
+      if (value === null || value === undefined || value === "") {
+          return "N/A";
+      }
+
+      // Defensive check for object types (e.g., if populate somehow fails to flatten, or unexpected data)
+      if (typeof value === 'object') {
+          // If it's an object with a 'name' property (like a populated Mongoose document for Facility or User)
+          if (value && value.name) { // Check value is not null before accessing .name
+              return value.name;
+          }
+          // If it's an object with an '_id' property (like an unpopulated Mongoose ObjectId reference)
+          if (value && value._id) { // Check value is not null before accessing ._id
+              return String(value._id); // Display the ID instead of [object Object]
+          }
+          // Fallback for any other unexpected object type
+          try {
+              return JSON.stringify(value); // Try to convert object to string (e.g., { "someKey": "someValue" })
+          } catch (e) {
+              console.error(`Error stringifying object for key '${key}' with value:`, value, e);
+              return "Object Error"; // Generic error for object stringification
+          }
+      }
+
+      // Default to string conversion for all other primitive values
+      return String(value);
   };
 
   return (

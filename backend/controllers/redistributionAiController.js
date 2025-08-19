@@ -37,6 +37,7 @@ async function getLLMJustificationsBatched(suggestionPrompts) {
   let currentRetry = 0;
 
   const userMessageContent = `You are an expert pharmaceutical supply chain manager providing practical and relatable advice on drug redistribution. Below are multiple potential drug redistribution suggestions. For each suggestion, provide a concise, professional, and actionable reason that sounds human and focuses on real-world impact like patient care, cost savings, and preventing waste. Respond with a JSON object where each key is the suggestion's 'id' and the value is an object containing the 'id' and 'reason' string.
+  - IMPORTANT: When mentioning facility names after prepositions (like 'to', 'from', 'at'), always ensure there is a single space between the preposition and the facility name (e.g., "to [Facility Name]", not "to[Facility Name]"). Ensure readability and proper sentence structure.
 
 Examples of desired output format:
 {

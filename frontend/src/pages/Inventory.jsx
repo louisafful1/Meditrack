@@ -17,7 +17,7 @@ import {
     RESET_DRUG
 } from "../redux/drug/drugSlice";
 import { toast } from 'react-toastify';
-import { downloadCSV } from "../utils/exportUtils";
+// import { downloadCSV } from "../utils/exportUtils";
 
 const InventoryPage = () => {
     const dispatch = useDispatch();
@@ -165,14 +165,14 @@ const InventoryPage = () => {
         setSortConfig({ key, direction });
     };
 
-    const handleExportCSV = () => {
-        if (!drugs.length) {
-            toast.info("No data to export.");
-            return;
-        }
-        downloadCSV(drugs, "inventory");
-        toast.success("Inventory data exported successfully!");
-    };
+    // const handleExportCSV = () => {
+    //     if (!drugs.length) {
+    //         toast.info("No data to export.");
+    //         return;
+    //     }
+    //     downloadCSV(drugs, "inventory");
+    //     toast.success("Inventory data exported successfully!");
+    // };
 
     const handleQRResult = async (data) => {
         try {
@@ -313,12 +313,12 @@ const InventoryPage = () => {
                             <option value="low">Low Stock</option>
                             <option value="Out of Stock">Out of Stock</option>
                         </select>
-                        <button
+                        {/* <button
                             onClick={handleExportCSV}
                             className="flex items-center bg-indigo-600 px-3 py-2 rounded-md hover:bg-indigo-700"
                         >
                             <Download className="h-4 w-4 mr-1" /> Export CSV
-                        </button>
+                        </button> */}
                     </div>
                 </div>
 

@@ -153,8 +153,8 @@ export const getReports = asyncHandler(async (req, res) => {
                 .populate('drug', 'drugName batchNumber') // Explicitly populate drugName and batchNumber
                 .populate('fromFacility', 'name')
                 .populate('toFacility', 'name')
-                .populate('requestedBy', 'name')
-                .select('quantity reason expiryDate status createdAt updatedAt declinedAt'); // Select only desired fields from Redistribution model
+                // .populate('requestedBy', 'name')
+                .select('quantity reason expiryDate status'); // Select only desired fields from Redistribution model
 
             // Map the data to flatten populated fields and format dates
             data = data.map(item => ({
@@ -166,10 +166,10 @@ export const getReports = asyncHandler(async (req, res) => {
                 reason: item.reason,
                 expiryDate: formatDate(item.expiryDate),
                 status: item.status,
-                requestedBy: item.requestedBy?.name || 'N/A', // Access name from populated requestedBy object
-                createdAt: formatDate(item.createdAt),
-                updatedAt: formatDate(item.updatedAt),
-                declinedAt: formatDate(item.declinedAt)
+                // requestedBy: item.requestedBy?.name || 'N/A', // Access name from populated requestedBy object
+                // createdAt: formatDate(item.createdAt),
+                // updatedAt: formatDate(item.updatedAt),
+                // declinedAt: formatDate(item.declinedAt)
             }));
             break;
 
